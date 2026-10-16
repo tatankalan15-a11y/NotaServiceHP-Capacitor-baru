@@ -1,1 +1,409 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#667eea" id="themeColorMeta">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Nota Service HP - Profesional</title>
+    <script src="libs/html2canvas.min.js"></script>
+    <script src="libs/jspdf.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        :root { --primary: #667eea; --secondary: #764ba2; --success: #4caf50; --warning: #ff9800; --danger: #f44336; --info: #00bcd4; --bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%); --card-bg: white; --text: #333; --border: #e4e4e4; --slogan-color: #666; }
+        body.dark-mode { --bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); --card-bg: #16213e; --text: #eaeaea; --border: #2a2a4a; --slogan-color: #aaa; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: var(--bg); min-height: 100vh; padding: 15px; padding-bottom: 30px; color: var(--text); transition: all 0.3s ease; }
+        .container { max-width: 500px; margin: 0 auto; }
+        .header { text-align: center; padding: 20px 0; color: white; }
+        .header-icon { width: 70px; height: 70px; background: white; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 35px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; }
+        .header-icon img { width: 100%; height: 100%; object-fit: contain; }
+        .header h1 { font-size: 22px; margin-bottom: 5px; }
+        .header .slogan { font-size: 12px; opacity: 0.9; margin-top: 4px; }
+        .header-controls { display: flex; justify-content: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+        .btn-icon { background: rgba(255,255,255,0.2); border: none; color: white; padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 12px; backdrop-filter: blur(10px); transition: all 0.3s; }
+        .connection-status { position: fixed; top: 0; left: 0; right: 0; background: #f44336; color: white; text-align: center; padding: 5px; font-size: 12px; transform: translateY(-100%); transition: transform 0.3s; z-index: 9999; }
+        .connection-status.offline { transform: translateY(0); }
+        .workflow-info { background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); border-radius: 15px; padding: 15px; margin-bottom: 20px; color: white; border: 1px solid rgba(255,255,255,0.2); }
+        .workflow-steps { display: flex; justify-content: space-between; font-size: 11px; margin-top: 10px; }
+        .step { text-align: center; flex: 1; opacity: 0.6; transition: all 0.3s; }
+        .step.active { opacity: 1; font-weight: 700; transform: scale(1.1); }
+        .nota-type-selector { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 20px; }
+        .type-btn { padding: 15px 5px; border: 3px solid rgba(255,255,255,0.3); border-radius: 12px; background: rgba(255,255,255,0.1); color: white; cursor: pointer; text-align: center; backdrop-filter: blur(10px); transition: all 0.3s; }
+        .type-btn.active { background: white; color: var(--primary); border-color: white; transform: scale(1.05); box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .type-btn .icon { font-size: 24px; margin-bottom: 5px; display: block; }
+        .type-btn .label { font-size: 11px; font-weight: 700; display: block; }
+        .form-card, .preview-card, .history-card, .settings-card { background: var(--card-bg); border-radius: 20px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin-bottom: 20px; display: none; }
+        .form-card.active, .preview-card.active, .history-card.active, .settings-card.active { display: block; animation: slideUp 0.3s ease; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .form-title { font-size: 18px; color: var(--text); margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+        .form-group { margin-bottom: 18px; }
+        label { display: block; margin-bottom: 6px; color: var(--text); font-weight: 600; font-size: 13px; text-transform: uppercase; }
+        input, textarea, select { width: 100%; padding: 14px 16px; border: 2px solid var(--border); border-radius: 12px; font-size: 15px; background: var(--card-bg); color: var(--text); font-family: inherit; transition: all 0.3s; }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+        .input-with-button { display: flex; gap: 8px; }
+        .btn-import { padding: 0 16px; background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); color: white; border: none; border-radius: 12px; cursor: pointer; font-size: 20px; }
+        .checkbox-group { display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(128,128,128,0.1); border-radius: 10px; border: 2px solid var(--border); cursor: pointer; margin-bottom: 8px; }
+        .checkbox-group input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--primary); }
+        .status-option { padding: 12px; border: 2px solid var(--border); border-radius: 10px; text-align: center; cursor: pointer; background: var(--card-bg); transition: all 0.3s; }
+        .status-option.active { border-color: var(--primary); background: rgba(102, 126, 234, 0.1); color: var(--primary); font-weight: 700; }
+        .btn-primary { width: 100%; padding: 16px; border: none; border-radius: 12px; background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); color: white; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 10px; transition: all 0.3s; }
+        .btn-secondary { width: 100%; padding: 14px; border: 2px solid var(--border); border-radius: 12px; background: var(--card-bg); color: #666; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .nota-paper { background: white; border-radius: 15px; padding: 25px; margin-bottom: 20px; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.1); color: #333; transition: padding 0.2s; overflow: hidden; width: 100%; font-size: 12px; }
+        .nota-paper::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.02) 0px, rgba(0,0,0,0.02) 2px, transparent 2px, transparent 8px); pointer-events: none; z-index: 0; }
+        .nota-paper.terima { border: 3px solid var(--warning); background: linear-gradient(to bottom, #fff8e1 0%, #ffffff 100%); }
+        .nota-paper.diagnosa { border: 3px solid #2196f3; background: linear-gradient(to bottom, #e3f2fd 0%, #ffffff 100%); }
+        .nota-paper.selesai { border: 3px solid var(--info); background: linear-gradient(to bottom, #e0f7fa 0%, #ffffff 100%); }
+        .nota-paper.ambil { border: 3px solid var(--success); background: linear-gradient(to bottom, #e8f5e9 0%, #ffffff 100%); }
+        .nota-paper.batal { border: 3px solid var(--danger); background: linear-gradient(to bottom, #ffebee 0%, #ffffff 100%); }
+        .nota-header { text-align: center; border-bottom: 2px solid #dee2e6; padding-bottom: 15px; margin-bottom: 20px; position: relative; z-index: 1; }
+        .nota-logo { width: 60px; height: 60px; object-fit: contain; margin-bottom: 10px; border-radius: 10px; }
+        .nota-type-badge { display: inline-block; padding: 8px 20px; border-radius: 25px; font-size: 13px; font-weight: 800; color: white; margin-bottom: 10px; }
+        .badge-terima { background: var(--warning); }
+        .badge-diagnosa { background: #2196f3; }
+        .badge-selesai { background: var(--info); }
+        .badge-ambil { background: var(--success); }
+        .history-type.langsung, .history-type.jual { background: var(--success); color: #fff; }
+        .badge-batal { background: var(--danger); }
+        .nota-header h2 { color: #333; font-size: 20px; margin-bottom: 5px; }
+        .nota-slogan { font-size: 11px; color: var(--slogan-color); margin-top: 2px; font-style: italic; }
+        .nota-alamat, .nota-telp { font-size: 12px; color: #666; margin-bottom: 3px; }
+        .nota-id { background: #f8f9fa; padding: 8px 15px; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 14px; margin-top: 10px; display: inline-block; border: 1px dashed #adb5bd; letter-spacing: 0.5px; }
+        .nota-section { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px dashed #dee2e6; position: relative; z-index: 1; }
+        .nota-section-title { font-size: 12px; color: #868e96; text-transform: uppercase; margin-bottom: 10px; font-weight: 700; }
+        .nota-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; }
+        .nota-label { color: #666; font-weight: 500; }
+        .nota-value { color: #333; font-weight: 600; text-align: right; max-width: 60%; word-break: break-word; }
+        .nota-total { background: #f8f9fa; padding: 15px; border-radius: 10px; border: 2px solid #dee2e6; }
+        .nota-lunas { margin-top: 10px; padding: 10px; border-radius: 8px; text-align: center; font-weight: 800; font-size: 15px; letter-spacing: 1px; }
+        .nota-lunas small { display: block; margin-top: 3px; font-size: 12px; font-weight: 700; letter-spacing: 0; }
+        .nota-lunas.lunas { background: #e8f5e9; color: #2e7d32; border: 2px solid #4caf50; }
+        .nota-lunas.belum { background: #fff3e0; color: #e65100; border: 2px solid #ff9800; }
+        .nota-footer { margin-top: 25px; padding-top: 15px; border-top: 1px dashed #dee2e6; text-align: center; font-size: 11px; color: #333; }
+        .syarat-section { margin-top: 20px; padding: 10px; background: #f9f9f9; border-radius: 8px; font-size: 11px; line-height: 1.45; color: #555; text-align: left; border-left: 3px solid var(--primary); }
+        .action-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; }
+        .btn-action { padding: 12px; border: none; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: white; transition: all 0.3s; text-align: center; }
+        .btn-wa-text { background: linear-gradient(135deg, #25d366 0%, #128c7e 100%); }
+        .btn-wa-img { background: linear-gradient(135deg, #128c7e 0%, #075e54 100%); }
+        .btn-bluetooth { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .btn-pdf { background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); }
+        .btn-preview-thermal { background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); }
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(100px); background: #333; color: white; padding: 12px 24px; border-radius: 25px; font-size: 14px; opacity: 0; transition: all 0.3s; z-index: 1000; }
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+        .history-item { padding: 15px; border: 2px solid var(--border); border-radius: 12px; margin-bottom: 10px; cursor: pointer; background: var(--card-bg); transition: all 0.3s; }
+        .history-item:hover { transform: translateX(5px); border-color: var(--primary); }
+        .history-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .history-name { font-weight: 700; font-size: 15px; color: var(--text); }
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+        .stat-card { background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); color: white; padding: 15px; border-radius: 12px; text-align: center; }
+        .kondisi-checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px; }
+        .kondisi-checkbox { background: rgba(128,128,128,0.1); padding: 8px 12px; border-radius: 20px; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
+        .kondisi-checkbox.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .foto-preview { max-width: 100%; max-height: 120px; margin-top: 8px; border-radius: 8px; display: none; }
+        .foto-preview.show { display: block; }
+        .timeline { margin-top: 15px; padding: 12px; background: #f8f9fa; border-radius: 12px; border-left: 4px solid var(--primary); }
+        .workflow-buttons { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
+        .btn-workflow { flex: 1; padding: 12px; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; background: #f0f0f0; color: #333; }
+        .btn-workflow.diagnosa { background: #2196f3; color: white; }
+        .btn-workflow.selesai { background: #00bcd4; color: white; }
+        .btn-workflow.ambil { background: #4caf50; color: white; }
+        .logo-preview { width: 100px; height: 100px; border: 2px dashed #ccc; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; background: var(--card-bg); }
+        .loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 3000; backdrop-filter: blur(5px); }
+        .loading-overlay.show { display: flex; }
+        .loading-spinner { width: 50px; height: 50px; border: 4px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .db-status { position: fixed; bottom: 10px; right: 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--success); z-index: 9999; }
+        @media print { .header, .workflow-info, .nota-type-selector, .form-card, .btn-primary, .btn-secondary, .action-grid, .workflow-buttons { display: none; } .preview-card { display: block; } .nota-paper { margin: 0; padding: 10px; width: 80mm; font-size: 12px; } }
+        .error-input { border-color: #f44336 !important; background-color: rgba(244,67,54,0.05) !important; }
+        .validation-msg { color: #f44336; font-size: 12px; margin-top: 4px; display: none; }
+        .validation-msg.show { display: block; }
+        .warranty-text { font-size: 11px; color: #2c7da0; font-weight: bold; margin-top: 10px; text-align: center; }
+        .color-preview { width: 30px; height: 30px; border-radius: 50%; display: inline-block; vertical-align: middle; margin-left: 10px; border: 1px solid #ccc; }
+        .thermal-preview-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 4000; visibility: hidden; opacity: 0; transition: all 0.3s; }
+        .thermal-preview-modal.active { visibility: visible; opacity: 1; }
+        .thermal-preview-content { background: white; width: 90%; max-width: 350px; max-height: 80%; border-radius: 20px; padding: 20px; overflow: auto; font-family: 'Courier New', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; color: black; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .close-modal { text-align: right; margin-bottom: 10px; }
+        .close-modal button { background: #f44336; color: white; border: none; border-radius: 20px; padding: 5px 12px; cursor: pointer; }
+        .btn-save-contact { background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); color: white; margin-top: 8px; font-size: 12px; padding: 8px; }
+        .printer-settings { background: rgba(0,0,0,0.05); padding: 10px; border-radius: 12px; margin-bottom: 15px; }
+        .pattern-container { display: flex; flex-direction: column; align-items: center; margin-top: 10px; }
+        .pattern-canvas { background: #f0f0f0; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); cursor: pointer; touch-action: none; width: 100%; max-width: 200px; height: auto; aspect-ratio: 1 / 1; }
+        .pattern-buttons { display: flex; gap: 10px; margin-top: 10px; }
+        .pattern-buttons button { padding: 6px 12px; border: none; border-radius: 20px; background: var(--primary); color: white; font-size: 12px; cursor: pointer; }
+        .pattern-info { font-size: 12px; margin-top: 8px; color: var(--text); text-align: center; }
 
+        .sp-item{border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:10px;margin-bottom:8px;}
+        .sp-panel{border:2px solid var(--primary,#667eea);border-radius:12px;padding:10px;display:grid;gap:8px;}
+        .sp-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+        .sp-grid label{font-size:12px;}
+        .sp-btn{width:auto;padding:6px 10px;font-size:12px;margin:0;}
+        .sp-badge{font-size:10px;font-weight:bold;padding:2px 6px;border-radius:6px;color:#fff;vertical-align:middle;}
+        .sp-habis{background:#c62828;} .sp-tipis{background:#ef6c00;}
+        .sp-alert{margin-top:8px;padding:8px 10px;border-radius:10px;background:rgba(239,108,0,.15);font-size:13px;font-weight:bold;}
+        .license-status { font-size: 12px; font-weight: 600; margin-top: 6px; opacity: 0.95; }
+        .activation-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 5000; visibility: hidden; opacity: 0; transition: all 0.3s; }
+        .activation-modal.active { visibility: visible; opacity: 1; }
+        .activation-content { background: var(--card-bg, #fff); width: 90%; max-width: 380px; border-radius: 16px; padding: 22px; box-shadow: 0 12px 40px rgba(0,0,0,0.35); color: var(--text, #333); }
+        .activation-content h3 { margin-bottom: 8px; font-size: 18px; }
+        .activation-content label { display: block; font-size: 12px; margin-bottom: 4px; font-weight: 600; }
+        .activation-content input { width: 100%; padding: 10px 12px; border: 1px solid var(--border, #ddd); border-radius: 10px; font-size: 14px; margin-bottom: 12px; background: var(--card-bg); color: var(--text); box-sizing: border-box; }
+        .activation-content .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+        .activation-content .btn-row button { flex: 1; padding: 12px; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; }
+        .activation-content .hint { font-size: 11px; color: #888; margin-top: 12px; line-height: 1.4; }
+        .pin-lock-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(10,10,30,0.92); display: flex; align-items: center; justify-content: center; z-index: 6000; visibility: hidden; opacity: 0; transition: all 0.3s; }
+        .pin-lock-modal.active { visibility: visible; opacity: 1; }
+        .pin-lock-content { background: var(--card-bg, #fff); width: 90%; max-width: 360px; border-radius: 18px; padding: 24px; box-shadow: 0 16px 48px rgba(0,0,0,0.45); color: var(--text, #333); }
+        .pin-lock-content h3 { margin-bottom: 8px; font-size: 18px; }
+        .pin-lock-content input { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--border,#ddd); font-size: 20px; letter-spacing: 6px; text-align: center; margin-bottom: 12px; box-sizing: border-box; background: var(--card-bg); color: var(--text); }
+        .pin-lock-content .btn-row { display: flex; gap: 8px; }
+        .pin-lock-content .btn-row button { flex: 1; padding: 12px; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; }
+    </style>
+<base target="_blank">
+</head>
+<body>
+<div class="connection-status" id="connectionStatus">⚠️ Mode Offline - Data tersimpan lokal</div>
+<div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"></div></div>
+<div class="db-status" id="dbStatus"></div>
+<div class="container">
+    <div class="header">
+        <div class="header-icon" id="headerIcon">📱</div>
+        <h1 id="tokoNameDisplay">Nota Service HP</h1>
+        <div class="slogan" id="tokoSloganDisplay"></div>
+        <p>Sistem Manajemen Service Profesional</p>
+        <div class="license-status" id="licenseStatus">⏳ Trial</div>
+        <div class="header-controls">
+            <button class="btn-icon" onclick="app.spOpen()">📦 Sparepart</button>
+            <button class="btn-icon" onclick="app.showHistory()">📋 Riwayat</button>
+            <button class="btn-icon" onclick="app.showSettings()">⚙️ Pengaturan</button>
+            <button class="btn-icon" onclick="app.toggleDarkMode()">🌙 Mode</button>
+        </div>
+    </div>
+    <div class="workflow-info">
+        <div style="font-size:13px; margin-bottom:5px;">Alur Service (4 Tahap):</div>
+        <div class="workflow-steps">
+            <div class="step active" data-step="terima"><div>📥</div><div>Terima</div></div>
+            <div class="step" data-step="diagnosa"><div>🔍</div><div>Diagnosa</div></div>
+            <div class="step" data-step="selesai"><div>✅</div><div>Selesai</div></div>
+            <div class="step" data-step="ambil"><div>📤</div><div>Ambil</div></div>
+        </div>
+    </div>
+    <div class="nota-type-selector">
+        <div class="type-btn active" onclick="app.klaimOff(); app.selectType('terima')" id="btnTerima"><span class="icon">📥</span><span class="label">NOTA<br>TERIMA</span></div>
+        <div class="type-btn" onclick="app.selectType('diagnosa')" id="btnDiagnosa"><span class="icon">🔍</span><span class="label">HASIL<br>DIAGNOSA</span></div>
+        <div class="type-btn" onclick="app.selectType('selesai')" id="btnSelesai"><span class="icon">✅</span><span class="label">NOTA<br>SELESAI</span></div>
+        <div class="type-btn" onclick="app.selectType('ambil')" id="btnAmbil"><span class="icon">📤</span><span class="label">NOTA<br>AMBIL</span></div>
+        <div class="type-btn" onclick="app.selectType('langsung')" id="btnLangsung" style="grid-column:1/-1;"><span class="icon">⚡</span><span class="label">NOTA SERVIS LANGSUNG<br><small>selesai &amp; langsung diambil</small></span></div>
+        <div class="type-btn" onclick="app.selectType('jual')" id="btnJual" style="grid-column:1/-1;"><span class="icon">🛍️</span><span class="label">NOTA PENJUALAN<br><small>aksesoris &amp; barang</small></span></div>
+        <div class="type-btn" onclick="app.mulaiKlaim()" id="btnKlaim" style="grid-column:1/-1;"><span class="icon">🛡️</span><span class="label">KLAIM GARANSI<br><small>servis ulang dari nota lama</small></span></div>
+    </div>
+
+    <!-- FORM CARD -->
+    <div class="form-card active" id="formCard">
+        <form id="notaForm" onsubmit="event.preventDefault(); app.buatPreview();">
+            <div class="form-title"><span id="formTitle">📥 Nota Penerimaan HP</span></div>
+            <div class="form-group">
+                <label>Nama Pelanggan *</label>
+                <div class="input-with-button">
+                    <input type="text" id="nama" autocapitalize="words" required>
+                    <button type="button" class="btn-import" onclick="app.importContact()">📇</button>
+                </div>
+                <div class="validation-msg" id="namaError"></div>
+                <button type="button" class="btn-secondary btn-save-contact" onclick="app.saveContact()">📇 Simpan ke Kontak</button>
+            </div>
+            <div class="form-group">
+                <label>Nomor HP / WhatsApp <small>(opsional)</small></label>
+                <input type="tel" id="nohp" placeholder="08xx atau +62 8xx" oninput="app.cleanPhoneInput(this)" onblur="app.validatePhone()">
+                <div class="validation-msg" id="phoneValidation">Format nomor tidak valid. Contoh: 0895xxxxxxxx atau +62 895-xxxx-xxxx</div>
+            </div>
+            <div class="row">
+                <div class="form-group"><label>Merek HP *</label><input type="text" id="merek" list="listMerek" autocapitalize="words" required><datalist id="listMerek"><option>Samsung</option><option>iPhone</option><option>Xiaomi</option><option>OPPO</option><option>Vivo</option></datalist><div class="validation-msg" id="merekError"></div></div>
+                <div class="form-group"><label>Model *</label><input type="text" id="model" autocapitalize="words" required><div class="validation-msg" id="modelError"></div></div>
+            </div>
+            <div class="form-group"><label>Keluhan/Kerusakan *</label><textarea id="keluhan" rows="3" required></textarea><div class="validation-msg" id="keluhanError"></div></div>
+            <div id="kelengkapanSection"><div class="form-group"><label>Kelengkapan yang Diserahkan</label><label class="checkbox-group"><input type="checkbox" value="SIM Card"> SIM Card</label><label class="checkbox-group"><input type="checkbox" value="Memory Card"> Memory Card</label><label class="checkbox-group"><input type="checkbox" value="Casing"> Casing</label><label class="checkbox-group"><input type="checkbox" value="Charger"> Charger</label><label class="checkbox-group"><input type="checkbox" value="Box"> Box/Dus</label></div></div>
+            <div class="form-group"><label>Kondisi Fisik Device</label><div class="kondisi-checkbox-group" id="kondisiCheckboxGroup"><div class="kondisi-checkbox" data-value="Penyok">Penyok</div><div class="kondisi-checkbox" data-value="Lecet">Lecet</div><div class="kondisi-checkbox" data-value="Retak">Retak</div><div class="kondisi-checkbox" data-value="Basah">Basah</div><div class="kondisi-checkbox" data-value="Lainnya">Lainnya</div></div><input type="text" id="kondisiLainnya" placeholder="Jika lainnya, sebutkan"><div style="margin-top:10px;"><label>Foto Device (opsional)</label><input type="file" id="fotoDevice" accept="image/*" onchange="app.handleFotoDevice(this)"><div id="fotoPreview" class="foto-preview"></div></div></div>
+            
+            <div class="form-group">
+                <label>Password / Pola Device</label>
+                <div class="pattern-container">
+                    <canvas id="patternCanvas" class="pattern-canvas" width="200" height="200"></canvas>
+                    <div class="pattern-buttons">
+                        <button type="button" onclick="app.resetPattern()">🗑️ Reset Pola</button>
+                        <button type="button" onclick="app.clearPattern()">✖️ Hapus</button>
+                    </div>
+                    <div class="pattern-info" id="patternInfo">Gambar pola pada titik-titik di atas</div>
+                </div>
+                <input type="hidden" id="passwordDevice" value="">
+                <input type="text" id="passwordDeviceText" placeholder="Atau ketik manual (password / deskripsi pola)" style="margin-top:10px;">
+            </div>
+
+            <div id="klaimSection" style="display:none; background:rgba(255,193,7,.15); padding:10px; border-radius:10px; margin-bottom:10px;"><div class="form-group"><label>🛡️ Klaim Garansi - No. Nota Asal atau No. HP</label><div style="display:flex; gap:6px;"><input type="text" id="klaimAsal" placeholder="SRV-xxxxxx-XXXX atau 08xx"><button type="button" class="btn-secondary" onclick="app.cariGaransi()">🔍 Cek</button></div><div id="klaimInfo" style="font-size:12px; margin-top:6px;"></div></div></div>
+            <div id="jualSection" style="display:none;"><div class="form-group"><label>Barang yang Dijual</label><div id="jualItems"></div><button type="button" class="btn-secondary" onclick="app.tambahItemJual()">➕ Tambah Barang</button></div></div>
+            <div id="diagnosaSection" style="display:none;"><div class="form-group"><label>Hasil Pemeriksaan</label><textarea id="hasilDiagnosa" rows="3"></textarea></div><div class="form-group"><label>Sparepart Diperlukan</label><input type="text" id="sparepart"></div><div class="form-group"><label>Harga Sparepart (Rp)</label><input type="number" id="hargaSparepart" min="0" step="1000" oninput="app.hitungEstimasi()"></div><div class="form-group"><label>Biaya Jasa (Rp)</label><input type="number" id="biayaJasa" min="0" step="1000" oninput="app.hitungEstimasi()"></div><div class="form-group"><label>Status Perbaikan</label><select id="statusDiagnosa"><option value="bisa">✅ BISA DIPERBAIKI</option><option value="setuju">🤝 DISETUJUI PELANGGAN</option><option value="tidak">❌ TIDAK BISA</option><option value="sparepart">📦 MENUNGGU SPAREPART</option><option value="proses">🔧 SEDANG DIKERJAKAN</option><option value="pending">⏳ MENUNGGU KONFIRMASI</option></select></div></div>
+            <div id="selesaiSection" style="display:none;"><div class="form-group"><label>Detail Perbaikan</label><textarea id="detailPerbaikan" rows="3"></textarea></div><div class="form-group"><label>Garansi (hari)</label><input type="number" id="garansiSelesai" min="0" step="1" value="0"></div><div class="form-group"><label>Status Hasil</label><select id="statusSelesai"><option value="normal">✅ BERFUNGSI NORMAL</option><option value="partial">⚠️ BERFUNGSI SEBAGIAN</option><option value="tidak">❌ TIDAK BISA</option></select></div><div class="form-group"><label>Siap Diambil</label><input type="text" id="siapAmbil"></div></div>
+            <div id="ambilSection" style="display:none;"><div class="form-group"><label>Status Pengambilan</label><div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;"><div class="status-option active" onclick="app.selectAmbilStatus('diambil')" id="statusDiambil">✅ DIAMBIL</div><div class="status-option" onclick="app.selectAmbilStatus('batal')" id="statusBatal">❌ DIBATALKAN</div></div></div><div id="alasanBatalGroup" style="display:none;"><div class="form-group"><label>Alasan</label><select id="alasanBatal"><option value="Tidak bisa diperbaiki">Tidak bisa diperbaiki</option><option value="Biaya mahal">Biaya mahal</option><option value="Sparepart tidak ada">Sparepart tidak ada</option><option value="Pelanggan membatalkan">Pelanggan membatalkan</option></select></div></div></div>
+            <div id="langsungSection" style="display:none;"><div class="form-group"><label>Detail Perbaikan</label><textarea id="detailLangsung" rows="3" placeholder="Contoh: Ganti LCD, tes touch &amp; warna normal"></textarea></div><div class="form-group"><label>Sparepart Diganti</label><input type="text" id="sparepartLangsung" placeholder="Contoh: LCD original Samsung A12"></div><div class="form-group"><label>Garansi (hari)</label><input type="number" id="garansiLangsung" min="0" step="1" value="0"></div></div>
+            <div id="partPickerBox" style="display:none;"><div class="form-group"><label>🔩 Sparepart dari Stok <small id="partPickerNote"></small></label><div id="partRows"></div><button type="button" class="btn-secondary" onclick="app.spAddPartRow()">➕ Pakai Sparepart dari Stok</button><div id="partSummary" style="font-size:12px; margin-top:6px;"></div></div></div>
+            <div class="row-3">
+                <div class="form-group"><label id="labelTotalBiaya">Total Biaya (Rp)</label><input type="number" id="totalBiaya" min="0" step="1000" oninput="app.hitungSisa()"></div>
+                <div class="form-group"><label>DP / Panjar (Rp)</label><input type="number" id="dp" min="0" step="1000" oninput="app.hitungSisa()"></div>
+                <div class="form-group"><label>Modal Sparepart (Rp) <small>- untuk hitung laba</small></label><input type="number" id="modal" min="0" step="1000"></div>
+                <div class="form-group"><label>Metode Bayar</label><select id="metodeBayar"><option value="Tunai">Tunai</option><option value="Transfer">Transfer</option><option value="QRIS">QRIS</option></select></div>
+                <div class="form-group"><label>Sisa (Rp)</label><input type="text" id="sisa" readonly style="background:#f0f0f0;"></div>
+                <div class="form-group"><label>Kurang bayar saat diambil (Rp) <small>- isi bila pelanggan belum melunasi; tercatat sebagai piutang</small></label><input type="number" id="kurangBayar" min="0" step="1000" value="0"></div>
+            </div>
+            <div class="form-group"><label>Estimasi Waktu</label><input type="text" id="estimasi" placeholder="1-2 hari"></div>
+            <div class="form-group"><label>Catatan Tambahan</label><input type="text" id="catatan"></div>
+            <button type="submit" class="btn-primary">👁️ Lihat & Simpan Nota</button>
+            <button type="button" class="btn-secondary" onclick="app.resetForm()">🗑️ Reset Form</button>
+        </form>
+    </div>
+
+    <!-- PREVIEW CARD -->
+    <div class="preview-card" id="previewCard">
+        <div class="nota-paper" id="notaContent"></div>
+        <div style="background:#f5f5f5; padding:15px; border-radius:12px; margin-bottom:15px;">
+            <div style="font-weight:600; margin-bottom:10px;">🖨️ Opsi Cetak & Kirim:</div>
+            <div class="action-grid">
+                <button class="btn-action btn-wa-text" onclick="app.kirimWA('teks')">💬<br>WA Teks</button>
+                <button class="btn-action btn-wa-img" onclick="app.kirimWA('gambar')">📷<br>WA Gambar</button>
+                <button class="btn-action btn-bluetooth" onclick="app.printBluetooth()">🖨️<br>Bluetooth</button>
+                <button class="btn-action btn-pdf" onclick="app.generatePDF()">📄<br>PDF</button>
+                <button class="btn-action btn-preview-thermal" onclick="app.previewThermal()">🔍<br>Preview Thermal</button>
+            </div>
+            <div class="printer-settings">
+                <details>
+                    <summary>⚙️ Pengaturan Printer Thermal</summary>
+                    <div style="margin-top:8px;">
+                        <button class="btn-secondary" onclick="app.pickPrinter()">🔎 Pilih Printer Bluetooth (ter-pairing)</button>
+                        <div id="printerList" style="font-size:12px; margin:5px 0;"></div>
+                        <label style="font-size:12px;">ID Printer: MAC Bluetooth atau IP printer LAN/WiFi</label>
+                        <input type="text" id="printerDeviceId" placeholder="AA:BB:CC:DD:EE:FF  atau  192.168.1.50:9100" style="padding:8px; font-size:12px;">
+                        <button class="btn-secondary" onclick="app.savePrinterId()" style="margin-top:5px;">💾 Simpan ID</button>
+                        <button class="btn-secondary" onclick="app.clearPrinterId()" style="margin-top:5px;">🗑️ Hapus ID</button>
+                        <button class="btn-secondary" onclick="app.testPrint()" style="margin-top:5px;">🖨️ Tes Cetak</button>
+                    </div>
+                </details>
+            </div>
+            <button class="btn-secondary" onclick="window.print()">Cetak ke Printer Biasa</button>
+        </div>
+        <div class="workflow-buttons" id="workflowButtons"></div>
+        <button class="btn-secondary" onclick="app.buatNotaBaru()">🔄 Buat Nota Baru</button>
+        <button class="btn-secondary" onclick="app.backToForm()">← Kembali Edit</button>
+    </div>
+
+    <!-- HISTORY CARD -->
+    <div class="history-card" id="historyCard">
+        <div class="form-title">📋 Riwayat Service <button class="btn-icon" onclick="app.backToForm()" style="background:#f0f0f0;">✕</button></div>
+        <div class="stats-grid"><div class="stat-card"><div class="stat-value" id="statTotal">0</div><div class="stat-label">Total Nota</div></div><div class="stat-card"><div class="stat-value" id="statBulanIni">0</div><div class="stat-label">Bulan Ini</div></div><div class="stat-card"><div class="stat-value" id="statSelesai">0</div><div class="stat-label">Selesai</div></div><div class="stat-card"><div class="stat-value" id="statPending">0</div><div class="stat-label">Pending</div></div></div>
+        <div><input type="text" id="searchHistory" placeholder="Cari nama, no hp, atau device..." oninput="app.renderHistory()" style="margin-bottom:10px;"><select id="filterType" onchange="app.renderHistory()"><option value="">Semua Status</option><option value="terima">Terima</option><option value="diagnosa">Diagnosa</option><option value="selesai">Selesai</option><option value="jual">jual</option><option value="langsung">langsung</option><option value="ambil">Ambil</option></select></div>
+        <div id="laporanBox" style="display:none; margin:12px 0;"></div>
+        <div id="advancedFinanceBox" style="display:none; margin:12px 0;"></div>
+        <div id="historyList" style="max-height:400px; overflow-y:auto;"></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
+            <button class="btn-secondary" onclick="app.spOpen()">📦 Manajemen Sparepart</button>
+            <button class="btn-secondary" onclick="app.showLaporan()">📈 Laporan & Pembukuan</button>
+            <button class="btn-secondary" onclick="app.showAdvancedFinance()">🧾 Keuangan Lanjutan</button>
+            <button class="btn-secondary" onclick="app.exportCSV()">📊 Export CSV</button>
+            <button class="btn-secondary" onclick="app.exportJSON()">💾 Backup JSON</button>
+            <button class="btn-secondary" onclick="app.backupToDrive()">☁️ Backup ke Google Drive</button>
+        </div>
+    </div>
+
+    <!-- SETTINGS CARD -->
+    <!-- STOK SPAREPART CARD -->
+    <div class="history-card" id="stokCard">
+        <div class="form-title">📦 Manajemen Sparepart <button class="btn-icon" onclick="app.backToForm()" style="background:#f0f0f0;">✕</button></div>
+        <div id="stokBox"></div>
+    </div>
+
+    <div class="settings-card" id="settingsCard">
+        <div class="form-title">⚙️ Pengaturan Toko <button class="btn-icon" onclick="app.backToForm()" style="background:#f0f0f0;">✕</button></div>
+        <div><label>Nama Toko</label><input type="text" id="settingNamaToko"></div>
+        <div><label>Slogan Toko</label><input type="text" id="settingSlogan" placeholder="Misal: Service Cepat & Bergaransi"></div>
+        <div><label>Warna Utama</label><div><input type="color" id="settingPrimaryColor" value="#667eea"><span class="color-preview" id="primaryColorPreview" style="background:#667eea;"></span></div></div>
+        <div><label>Alamat</label><input type="text" id="settingAlamat"></div>
+        <div><label>No. Telepon Toko</label><input type="tel" id="settingTelepon"></div>
+        <div><label>Logo Toko (Max 500KB)</label><div class="logo-preview" id="logoPreview"><span>Belum ada logo</span></div><input type="file" id="logoInput" accept="image/*" onchange="app.handleLogo(event)"><button onclick="app.removeLogo()" style="margin-top:8px;">🗑️ Hapus Logo</button></div>
+        <div><label>Ukuran Printer Thermal</label><select id="printerSize"><option value="58">58 mm</option><option value="75">75 mm</option><option value="80">80 mm</option></select></div>
+        <div><label class="checkbox-group"><input type="checkbox" id="autoPrintCheckbox"> 🔄 Auto print Bluetooth setelah simpan</label></div>
+        <div><label class="checkbox-group"><input type="checkbox" id="maskPwdCheckbox" onchange="localStorage.setItem('mask_pwd', this.checked); if(window.app && document.getElementById('previewCard').classList.contains('active')) app.renderPreview();"> 🔒 Sembunyikan password/pola di nota (privasi)</label></div>
+        <div><label>Auto Follow-up WhatsApp</label><label class="checkbox-group"><input type="checkbox" id="autoWASelesai"> Kirim WA notifikasi saat service selesai</label><label class="checkbox-group"><input type="checkbox" id="autoWAAmbil"> Kirim WA notifikasi saat diambil</label><textarea id="waNotifTemplate" rows="4" placeholder="Template notifikasi WA (gunakan {nama}, {device}, {nota_id}, {toko}, {status})"></textarea></div>
+        <div><label>Footer per Tipe Nota</label><div><label><input type="checkbox" id="footerTerimaEnabled"> 📥 Terima</label><textarea id="footerTerimaText" rows="2" placeholder="Footer untuk nota terima"></textarea></div><div><label><input type="checkbox" id="footerDiagnosaEnabled"> 🔍 Diagnosa</label><textarea id="footerDiagnosaText" rows="2"></textarea></div><div><label><input type="checkbox" id="footerSelesaiEnabled"> ✅ Selesai</label><textarea id="footerSelesaiText" rows="2"></textarea></div><div><label><input type="checkbox" id="footerAmbilEnabled"> 📤 Ambil/Batal</label><textarea id="footerAmbilText" rows="2"></textarea></div></div>
+        <div><label>Template WhatsApp (Teks Nota)</label><textarea id="templateText" rows="4" placeholder="Gunakan {nama}, {device}, {nota_id}, {biaya}, {status}, {tanggal}, {toko}, {footer}"></textarea></div>
+        <div><label>Syarat & Ketentuan</label><textarea id="skText" rows="5" placeholder="• Resiko kehilangan data bukan tanggung jawab kami.\n• Barang tidak diambil dalam 30 hari dianggap hangus.\n• Garansi hanya berlaku pada sparepart yang diganti."></textarea></div>
+        <div><label>Backup & Restore</label><button class="btn-secondary" onclick="app.backupData()">📥 Backup JSON</button><div class="file-input-wrapper"><input type="file" id="restoreInput" accept=".json" onchange="app.restoreData(event)" style="display:none;"><label for="restoreInput" class="btn-secondary" style="display:block; text-align:center;">📤 Restore</label></div><button class="btn-secondary" onclick="app.clearAllData()" style="color:#c62828;">⚠️ Hapus Semua Data</button></div>
+        <div class="form-group"><label>Aplikasi WhatsApp untuk kirim gambar</label><select id="waApp"><option value="auto">Otomatis (WhatsApp biasa, jika tidak ada pakai Business)</option><option value="com.whatsapp.w4b">WhatsApp Business</option><option value="com.whatsapp">WhatsApp biasa</option></select></div>
+        <div style="margin-top:16px;padding:12px;border-radius:12px;background:rgba(102,126,234,0.1);">
+            <b>🔐 Lisensi / Aktivasi</b>
+            <p style="font-size:12px;margin:6px 0;">Trial terbatas 100 transaksi. Aktifkan full version dengan kode aktivasi.</p>
+            <div style="margin:10px 0 8px;">
+                <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Serial Number (SN)</label>
+                <input type="text" id="settingSN" readonly style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border,#ddd);background:#f5f5f5;font-weight:700;letter-spacing:0.5px;font-size:14px;box-sizing:border-box;color:var(--text,#333);">
+                <p style="font-size:11px;color:#888;margin:6px 0 0;line-height:1.35;">SN digenerate dari Nama Toko + Alamat + Telepon. Simpan pengaturan dulu jika data toko baru diubah.</p>
+            </div>
+            <p id="settingLicenseStatus" style="font-size:12px;font-weight:600;margin:8px 0;">—</p>
+            <button class="btn-secondary" onclick="app.showActivationDialog()" style="width:100%;">🔑 Buka Form Aktivasi</button>
+        </div>
+        <div style="margin-top:16px;padding:12px;border-radius:12px;background:rgba(76,175,80,0.12);">
+            <b>🔒 Enkripsi Data (AES-256-GCM)</b>
+            <p id="cryptoStatus" style="font-size:12px;margin:8px 0;">🔓 Enkripsi nonaktif</p>
+            <p style="font-size:11px;color:#666;margin:0 0 10px;line-height:1.4;">Data nota, keuangan, dan backup dilindungi PIN. Kunci hanya di memori saat app terbuka.</p>
+            <button class="btn-secondary" onclick="app.enableEncryptionFromSettings()" style="width:100%;margin-bottom:6px;">🔒 Aktifkan Enkripsi</button>
+            <button class="btn-secondary" onclick="app.changePinFromSettings()" style="width:100%;margin-bottom:6px;">✏️ Ganti PIN</button>
+            <button class="btn-secondary" onclick="app.disableEncryption()" style="width:100%;color:#c62828;">🔓 Nonaktifkan Enkripsi</button>
+        </div>
+        <button class="btn-primary" onclick="app.saveSettings()">💾 Simpan Pengaturan</button>
+        <button class="btn-secondary" onclick="app.backToForm()">← Kembali</button>
+    </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<div id="thermalPreviewModal" class="thermal-preview-modal">
+    <div class="thermal-preview-content">
+        <div class="close-modal" style="display:flex; gap:8px; justify-content:flex-end;"><button onclick="app.printFromPreview()">🖨️ Cetak Thermal</button><button onclick="app.closeThermalPreview()">Tutup</button></div>
+        <pre id="thermalPreviewText"></pre>
+    </div>
+</div>
+
+<!-- Modal PIN Enkripsi -->
+<div id="pinLockModal" class="pin-lock-modal">
+    <div class="pin-lock-content">
+        <h3 id="pinLockTitle">🔐 Buka Kunci Data</h3>
+        <p id="pinLockHint" style="font-size:12px;margin:0 0 14px;line-height:1.4;color:#666;">Masukkan PIN enkripsi.</p>
+        <label style="font-size:12px;font-weight:600;">PIN</label>
+        <input type="password" id="pinInput" inputmode="numeric" maxlength="32" placeholder="••••" autocomplete="off">
+        <div id="pinConfirmWrap" style="display:none;">
+            <label style="font-size:12px;font-weight:600;">Konfirmasi PIN</label>
+            <input type="password" id="pinConfirm" inputmode="numeric" maxlength="32" placeholder="••••" autocomplete="off">
+        </div>
+        <div class="btn-row">
+            <button class="btn-secondary" onclick="app.closePinLock()" style="background:#eee;color:#333;">Batal</button>
+            <button class="btn-primary" onclick="app.submitPinLock()" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;">OK</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Aktivasi Full Version -->
+<div id="activationModal" class="activation-modal">
+    <div class="activation-content">
+        <h3>🔐 Aktivasi Full Version</h3>
+        <p style="font-size:13px;margin:8px 0 14px;">Trial terbatas <b>100 transaksi</b>. Masukkan kode aktivasi untuk membuka full version.</p>
+        <label>Serial Number (SN)</label>
+        <input type="text" id="actSN" readonly style="background:#f0f0f0;font-weight:700;letter-spacing:0.5px;">
+        <p style="font-size:11px;color:#888;margin:-6px 0 12px;line-height:1.35;">SN digenerate dari <b>Nama Toko + Alamat + Telepon</b>. Jika data toko diganti, SN berubah dan perlu aktivasi ulang.</p>
+        <label>Kode Aktivasi</label>
+        <input type="text" id="actCode" placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX" style="text-transform:uppercase;letter-spacing:1px;">
+        <div class="btn-row">
+            <button class="btn-secondary" onclick="app.closeActivation()" style="background:#eee;color:#333;">Batal</button>
+            <button class="btn-primary" onclick="app.doActivate()" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;">Aktifkan</button>
+        </div>
+        <p class="hint">Kirim SN di atas ke developer untuk mendapatkan kode aktivasi. Full version terikat pada data toko (nama, alamat, telepon).</p>
+    </div>
+</div>
+
+<script src="app.bundle.js"></script>
+</body>
+</html>
