@@ -1,0 +1,6 @@
+{
+  "appId": "com.notaservice.hp",
+  "appName": "Nota Service HP",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}

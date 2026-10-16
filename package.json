@@ -1,0 +1,28 @@
+{
+  "name": "nota-service-hp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nota Service HP - aplikasi Android (Capacitor)",
+  "scripts": {
+    "prepare:www": "node scripts/prepare.js",
+    "build:web": "npm run prepare:www && esbuild src/app.js --bundle --format=iife --target=es2020 --outfile=www/app.bundle.js",
+    "android:add": "npm run build:web && npx cap add android && node scripts/patch-android.js && npx cap sync android",
+    "android:sync": "npm run build:web && npx cap sync android",
+    "android:open": "npx cap open android",
+    "apk": "cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/camera": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/share": "^7.0.0",
+    "@capacitor-community/contacts": "^7.0.0",
+    "html2canvas": "1.4.1",
+    "jspdf": "2.5.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
