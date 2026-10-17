@@ -394,7 +394,7 @@ const EscPosPrinter = registerPlugin('EscPosPrinter');
 
         // Variabel Global
         let db, currentType = 'terima', currentStatus = 'diambil', currentNota = null;
-        let tokoSettings = {}, historyData = [], expenseData = [], logoData = null;
+        let tokoSettings = {}, historyData = [], expenseData = [], logoData = null, qrisData = null;
         let paymentData = [], inventoryData = [], auditData = [], stockMoves = [];
         const ADV_DB_STORES = ['pembayaran','inventori','audit','stokmutasi'];
         let fotoDevicePath = null, fotoDeviceData = null;
@@ -821,6 +821,15 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
                 } else if(n.dp>0) html+=row((n.type==='terima'||n.type==='diagnosa') ? 'Estimasi Sisa' : 'Sisa Pembayaran', rpf(n.sisa));
                 html+=`</div>`;
             }
+            // QRIS di nota konsumen (setelah total)
+            try {
+                const showAlways = localStorage.getItem('toko_qris_always') === 'true';
+                const hasBill = (currentNota.totalBiaya > 0) || (currentNota.sisa > 0) || (currentNota.kurangBayar > 0);
+                if (isSafeImg(qrisData) && (showAlways || hasBill)) {
+                    const ql = (localStorage.getItem('toko_qris_label') || '').trim();
+                    html += `<div class="nota-qris"><div class="qris-title">Bayar via QRIS</div><img src="${qrisData}" alt="QRIS"><div class="qris-label">${escapeHtml(ql || 'Scan QRIS untuk membayar')}</div></div>`;
+                }
+            } catch (_) {}
             if(currentNota.estimasiAwal>0 && currentNota.estimasiAwal!==currentNota.totalBiaya) html+=`<div style="font-size:12px; color:#666; margin-top:6px;">Estimasi awal diagnosa: Rp ${formatRupiah(currentNota.estimasiAwal)}</div>`;
             if(currentType==='diagnosa') html+=`<div style="font-size:12px; color:#666; margin-top:6px;">⚠️ Estimasi dapat berubah. Kami akan konfirmasi bila ada selisih biaya.</div>`;
             if(currentNota.timeline && currentNota.timeline.length>1){ html+=`<div class="timeline"><div style="font-size:12px; font-weight:bold; color:var(--primary); margin-bottom:8px;">📅 Timeline Service</div>`; currentNota.timeline.forEach(item=>{ let name={terima:'📥 Diterima',diagnosa:'🔍 Diagnosa',selesai:'✅ Selesai',ambil:'📤 Diambil/Dibatalkan',langsung:'⚡ Servis langsung'}[item.status]||item.status; const subMap = {setuju:'disetujui pelanggan', sparepart:'menunggu sparepart', proses:'sedang dikerjakan'}; if (item.status === 'diagnosa' && subMap[item.sub]) name += ' (' + subMap[item.sub] + ')'; else if(item.setuju) name += ' (disetujui pelanggan)'; html+=`<div style="font-size:11px; color:#666; margin-bottom:6px; display:flex; align-items:baseline; gap:8px;"><span style="flex:none; width:8px; height:8px; border-radius:50%; background:var(--primary);"></span><span style="font-family:monospace; font-size:10px; color:#999; white-space:nowrap;">${new Date(item.timestamp).toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span> <strong>${name}</strong></div>`; }); html+=`</div>`; }
@@ -955,6 +964,7 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
                     L.push(`[C]${sep}`); }
                 if (d.noteEstimasi) L.push(`[C]${clean(d.noteEstimasi)}`);
                 if (d.footer) L.push(`[C]${clean(d.footer)}`);
+                if (d.qrisHint) L.push(`[C]${clean(d.qrisHint)}`);
                 L.push('[C]Terima Kasih', '[C]Simpan nota ini sebagai bukti');
                 return L.join('\n');
             }
@@ -1067,7 +1077,7 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
 
         async function backupToDrive() {
             if (!historyData.length && !expenseData.length) { showToast('Tidak ada data untuk di-backup'); return; }
-            const data = { settings:tokoSettings, history:historyData.map(({passwordDevice, ...n}) => n), logo:logoData, pengeluaran:expenseData, pembayaran:paymentData, inventori:inventoryData, stokmutasi:stockMoves, audit:auditData, openingBalances:{cash:Number(localStorage.getItem('opening_cash')||0),transfer:Number(localStorage.getItem('opening_transfer')||0),qris:Number(localStorage.getItem('opening_qris')||0),other:Number(localStorage.getItem('opening_other')||0)}, footers, sk:skText, autoWASelesai, autoWAAmbil, waNotifTemplate, exported:new Date(), note: 'Data password/pola perangkat sengaja tidak disertakan demi keamanan.' };
+            const data = { settings:tokoSettings, history:historyData.map(({passwordDevice, ...n}) => n), logo:logoData, qris:qrisData, pengeluaran:expenseData, pembayaran:paymentData, inventori:inventoryData, stokmutasi:stockMoves, audit:auditData, openingBalances:{cash:Number(localStorage.getItem('opening_cash')||0),transfer:Number(localStorage.getItem('opening_transfer')||0),qris:Number(localStorage.getItem('opening_qris')||0),other:Number(localStorage.getItem('opening_other')||0)}, footers, sk:skText, autoWASelesai, autoWAAmbil, waNotifTemplate, exported:new Date(), note: 'Data password/pola perangkat sengaja tidak disertakan demi keamanan.' };
             const json = JSON.stringify(data, null, 2), blob = new Blob([json], {type: 'application/json'});
             const file = new File([blob], `Backup_${new Date().toISOString().slice(0,10)}.json`, { type: 'application/json' });
             if (isCapacitor()) {
@@ -1089,6 +1099,7 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
             x.final = n.type === 'langsung' || n.type === 'jual' || (n.type === 'ambil' && !!(n.ambil && n.ambil.status === 'diambil'));
             if ((n.type === 'terima' || n.type === 'diagnosa') && n.estimasi) x.estimasi = unesc(n.estimasi);
             if (n.klaim) x.klaim = `Nota asal ${unesc(n.klaim.asal || '-')}`;
+            try { if (localStorage.getItem('toko_qris') && isSafeImg(localStorage.getItem('toko_qris'))) x.qrisHint = localStorage.getItem('toko_qris_label') || 'Bayar QRIS: minta kasir / lihat nota digital'; } catch(_){}
             return x;
         }
         function biayaLabel(t) { if (t === 'jual') return 'Total'; return (t === 'terima' || t === 'diagnosa') ? 'Estimasi Biaya' : 'Biaya Akhir'; }
@@ -1213,6 +1224,12 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
         function saveSettings() {
             tokoSettings = { nama: document.getElementById('settingNamaToko').value, slogan: document.getElementById('settingSlogan').value, primaryColor: document.getElementById('settingPrimaryColor').value, alamat: document.getElementById('settingAlamat').value, telepon: document.getElementById('settingTelepon').value };
             localStorage.setItem('toko_settings', JSON.stringify(tokoSettings));
+            try {
+                const ql = (document.getElementById('settingQrisLabel') || {}).value || '';
+                localStorage.setItem('toko_qris_label', ql);
+                const qa = document.getElementById('qrisShowAlways');
+                localStorage.setItem('toko_qris_always', qa && qa.checked ? 'true' : 'false');
+            } catch (_) {}
             localStorage.setItem('wa_template', document.getElementById('templateText').value);
             localStorage.setItem('printer_size', document.getElementById('printerSize').value);
             autoWASelesai = document.getElementById('autoWASelesai').checked; autoWAAmbil = document.getElementById('autoWAAmbil').checked;
@@ -1237,6 +1254,31 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
             r.readAsDataURL(f);
         }
         function removeLogo() { logoData = null; localStorage.removeItem('toko_logo'); document.getElementById('logoPreview').innerHTML = '<span>Belum ada logo</span>'; document.getElementById('headerIcon').innerHTML = '📱'; showToast('Logo dihapus'); }
+
+        function handleQris(e) {
+            const f = e.target.files && e.target.files[0];
+            if (!f) return;
+            if (f.size > 500 * 1024) { showToast('Gambar QRIS max 500KB'); e.target.value = ''; return; }
+            const r = new FileReader();
+            r.onload = ev => {
+                if (!isSafeImg(ev.target.result) && !(typeof ev.target.result === 'string' && ev.target.result.startsWith('data:image/'))) {
+                    showToast('Format gambar tidak didukung'); return;
+                }
+                qrisData = ev.target.result;
+                localStorage.setItem('toko_qris', qrisData);
+                const qp = document.getElementById('qrisPreview');
+                if (qp) qp.innerHTML = `<img src="${qrisData}" style="max-width:100%;max-height:100%;">`;
+                showToast('QRIS disimpan');
+            };
+            r.readAsDataURL(f);
+        }
+        function removeQris() {
+            qrisData = null;
+            localStorage.removeItem('toko_qris');
+            const qp = document.getElementById('qrisPreview');
+            if (qp) qp.innerHTML = '<span>Belum ada QRIS</span>';
+            showToast('QRIS dihapus');
+        }
         function toggleDarkMode() { document.body.classList.toggle('dark-mode'); localStorage.setItem('dark_mode', document.body.classList.contains('dark-mode')); }
         async function renderHistory() {
             await loadHistory();
@@ -1255,7 +1297,7 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
         async function exportJSON() {
             if (isCapacitor()) { return backupToDrive(); }
             if (isEncryptionEnabled() && !cryptoKey) { showToast('Buka kunci PIN dulu sebelum backup'); showPinLock('unlock'); return; }
-            let data = { settings:tokoSettings, history:historyData.map(({passwordDevice, ...n}) => n), logo:logoData, pengeluaran:expenseData, pembayaran:paymentData, inventori:inventoryData, stokmutasi:stockMoves, audit:auditData, openingBalances:{cash:Number(localStorage.getItem('opening_cash')||0),transfer:Number(localStorage.getItem('opening_transfer')||0),qris:Number(localStorage.getItem('opening_qris')||0),other:Number(localStorage.getItem('opening_other')||0)}, footers, sk:skText, autoWASelesai, autoWAAmbil, waNotifTemplate, exported:new Date(), note: 'Data password/pola perangkat sengaja tidak disertakan demi keamanan.' };
+            let data = { settings:tokoSettings, history:historyData.map(({passwordDevice, ...n}) => n), logo:logoData, qris:qrisData, pengeluaran:expenseData, pembayaran:paymentData, inventori:inventoryData, stokmutasi:stockMoves, audit:auditData, openingBalances:{cash:Number(localStorage.getItem('opening_cash')||0),transfer:Number(localStorage.getItem('opening_transfer')||0),qris:Number(localStorage.getItem('opening_qris')||0),other:Number(localStorage.getItem('opening_other')||0)}, footers, sk:skText, autoWASelesai, autoWAAmbil, waNotifTemplate, exported:new Date(), note: 'Data password/pola perangkat sengaja tidak disertakan demi keamanan.' };
             let json = JSON.stringify(data, null, 2);
             let out = json, fname = `Backup_${new Date().toISOString().slice(0,10)}.json`;
             if (isEncryptionEnabled() && cryptoKey) {
@@ -1293,6 +1335,7 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
                     if(d.openingBalances && typeof d.openingBalances === 'object') { for (const [src,dst] of [['cash','opening_cash'],['transfer','opening_transfer'],['qris','opening_qris'],['other','opening_other']]) if (Number.isFinite(Number(d.openingBalances[src]))) localStorage.setItem(dst,String(Math.max(0,Number(d.openingBalances[src])))); }
                     if(d.settings && typeof d.settings === 'object' && !Array.isArray(d.settings)) { tokoSettings = {}; ['nama','slogan','alamat','telepon','primaryColor'].forEach(k => { if(typeof d.settings[k] === 'string') tokoSettings[k] = d.settings[k]; }); localStorage.setItem('toko_settings', JSON.stringify(tokoSettings)); }
                     if(d.logo) { if(isSafeImg(d.logo)) { logoData = d.logo; localStorage.setItem('toko_logo', logoData); } }
+                    if(d.qris) { if(isSafeImg(d.qris)) { qrisData = d.qris; localStorage.setItem('toko_qris', qrisData); } }
                     if(d.footers && typeof d.footers === 'object') { ['terima','diagnosa','selesai','ambil'].forEach(k => { const x = d.footers[k]; if(x && typeof x === 'object') footers[k] = { text: String(x.text||''), enabled: !!x.enabled }; }); localStorage.setItem('footers_settings', JSON.stringify(footers)); }
                     if(typeof d.sk === 'string') { skText = d.sk; localStorage.setItem('sk_text', skText); }
                     if(typeof d.autoWASelesai === 'boolean') { autoWASelesai = d.autoWASelesai; localStorage.setItem('auto_wa_selesai', autoWASelesai); }
@@ -1309,7 +1352,7 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
             if(!confirm('⚠️ Hapus semua data? Tidak bisa dikembalikan!')) return;
             if(historyData.length && confirm('Unduh backup dulu sebelum menghapus? (disarankan)')) { try { exportJSON(); } catch(e) {} }
             if(!confirm('Yakin hapus SEMUA data sekarang?')) return;
-            ['wa_template','wa_notif_template','auto_wa_selesai','auto_wa_ambil','nota_draft','printer_size','last_printer_id','footers_settings','auto_print','toko_settings','toko_logo','sk_text','dark_mode','mask_pwd','dp_batal_mode','opening_cash','opening_transfer','opening_qris','opening_other','last_backup_at','nota_cloud_config'].forEach(k => localStorage.removeItem(k));
+            ['wa_template','wa_notif_template','auto_wa_selesai','auto_wa_ambil','nota_draft','printer_size','last_printer_id','footers_settings','auto_print','toko_settings','toko_logo','toko_qris','toko_qris_label','toko_qris_always','sk_text','dark_mode','mask_pwd','dp_batal_mode','opening_cash','opening_transfer','opening_qris','opening_other','last_backup_at','nota_cloud_config'].forEach(k => localStorage.removeItem(k));
             if(db) { db.close(); db = null; }
             const req = indexedDB.deleteDatabase('NotaServiceDB');
             const done = () => { showToast('Semua data dihapus'); setTimeout(()=>location.reload(),1000); };
@@ -1320,6 +1363,7 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
             await initDB();
             let saved = localStorage.getItem('toko_settings'); if(saved) tokoSettings = JSON.parse(saved);
             logoData = localStorage.getItem('toko_logo'); if(!isSafeImg(logoData)) logoData = null; if(logoData) document.getElementById('headerIcon').innerHTML = `<img src="${logoData}" style="width:100%;height:100%;object-fit:contain;">`;
+            qrisData = localStorage.getItem('toko_qris'); if(!isSafeImg(qrisData)) qrisData = null;
             if(localStorage.getItem('dark_mode') === 'true') document.body.classList.add('dark-mode');
             let f = localStorage.getItem('footers_settings'); if(f) footers = JSON.parse(f);
             skText = localStorage.getItem('sk_text') || '• Resiko kehilangan data bukan tanggung jawab kami.\n• Barang tidak diambil dalam 30 hari dianggap hangus.\n• Garansi hanya berlaku pada sparepart yang diganti.';
@@ -1586,7 +1630,7 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
         async function exportAdvancedBackup() {
             await loadHistory();
             if (isEncryptionEnabled() && !cryptoKey) { showToast('Buka kunci PIN dulu sebelum backup'); showPinLock('unlock'); return; }
-            const data = { version: 3, settings: tokoSettings, history: historyData.map(({ passwordDevice, ...n }) => n), logo: logoData, pengeluaran: expenseData, pembayaran: paymentData, inventori: inventoryData, stokmutasi: stockMoves, audit: auditData, footers, sk: skText, autoWASelesai, autoWAAmbil, waNotifTemplate, openingBalances: { cash: Number(localStorage.getItem('opening_cash') || 0), transfer: Number(localStorage.getItem('opening_transfer') || 0), qris: Number(localStorage.getItem('opening_qris') || 0), other: Number(localStorage.getItem('opening_other') || 0) }, exported: new Date().toISOString(), note: 'Data pola/password perangkat tidak disertakan.' };
+            const data = { version: 3, settings: tokoSettings, history: historyData.map(({ passwordDevice, ...n }) => n), logo: logoData, qris: qrisData, pengeluaran: expenseData, pembayaran: paymentData, inventori: inventoryData, stokmutasi: stockMoves, audit: auditData, footers, sk: skText, autoWASelesai, autoWAAmbil, waNotifTemplate, openingBalances: { cash: Number(localStorage.getItem('opening_cash') || 0), transfer: Number(localStorage.getItem('opening_transfer') || 0), qris: Number(localStorage.getItem('opening_qris') || 0), other: Number(localStorage.getItem('opening_other') || 0) }, exported: new Date().toISOString(), note: 'Data pola/password perangkat tidak disertakan.' };
             let json = JSON.stringify(data, null, 2);
             let fname = `Backup_Lengkap_${todayFile()}.json`;
             if (isEncryptionEnabled() && cryptoKey) {
@@ -1920,7 +1964,7 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
             await kirimFile(`Stok_Sparepart_${todayFile()}.csv`, '\ufeff' + [head.map(csvCell).join(',')].concat(rows).join('\n'), 'text/csv', 'Stok Sparepart');
         }
 
-        return { init, selectType, selectAmbilStatus, buatPreview, renderPreview, updateWorkflowButtons, lanjutKe, kirimWA, printBluetooth, printFromPreview, generatePDF, exportCSV, exportJSON, restoreData, clearAllData, showHistory, showSettings, saveSettings, handleLogo, removeLogo, toggleDarkMode, backToForm, buatNotaBaru, resetForm, importContact, handleFotoDevice, cleanPhoneInput, validatePhone, hitungSisa, loadHistoryItem, renderHistory, backupData: exportJSON, backupToDrive, previewThermal, closeThermalPreview, saveContact, savePrinterId, clearPrinterId, pickPrinter, testPrint, resetPattern, clearPattern, tambahItemJual, hitungJual, mulaiKlaim, klaimOff, cariGaransi, hitungEstimasi, showLaporan, renderLaporan, exportLaporanCSV, exportBukuKas, exportLaporanPDF, setLapMode, setLapVal, setDpBatalMode, tambahPengeluaran, hapusPengeluaran, showAdvancedFinance, addPayment, reversePayment, saveOpeningBalances, spOpen, spSearch, spSetFilter, spShowForm, spSaveForm, spShowRestock, spSaveRestock, spShowAdjust, spSaveAdjust, spShowLedger, spArchive, spExportCSV, spClosePanel, spAddPartRow, spPartChanged, spFilterSel, spPickJual, exportAdvancedBackup, importMergeBundle, configureCloudSync, showActivationDialog, closeActivation, doActivate, updateLicenseUI, showPinLock, closePinLock, submitPinLock, enableEncryptionFromSettings, changePinFromSettings, disableEncryption, updateCryptoUI };
+        return { init, selectType, selectAmbilStatus, buatPreview, renderPreview, updateWorkflowButtons, lanjutKe, kirimWA, printBluetooth, printFromPreview, generatePDF, exportCSV, exportJSON, restoreData, clearAllData, showHistory, showSettings, saveSettings, handleLogo, removeLogo, handleQris, removeQris, toggleDarkMode, backToForm, buatNotaBaru, resetForm, importContact, handleFotoDevice, cleanPhoneInput, validatePhone, hitungSisa, loadHistoryItem, renderHistory, backupData: exportJSON, backupToDrive, previewThermal, closeThermalPreview, saveContact, savePrinterId, clearPrinterId, pickPrinter, testPrint, resetPattern, clearPattern, tambahItemJual, hitungJual, mulaiKlaim, klaimOff, cariGaransi, hitungEstimasi, showLaporan, renderLaporan, exportLaporanCSV, exportBukuKas, exportLaporanPDF, setLapMode, setLapVal, setDpBatalMode, tambahPengeluaran, hapusPengeluaran, showAdvancedFinance, addPayment, reversePayment, saveOpeningBalances, spOpen, spSearch, spSetFilter, spShowForm, spSaveForm, spShowRestock, spSaveRestock, spShowAdjust, spSaveAdjust, spShowLedger, spArchive, spExportCSV, spClosePanel, spAddPartRow, spPartChanged, spFilterSel, spPickJual, exportAdvancedBackup, importMergeBundle, configureCloudSync, showActivationDialog, closeActivation, doActivate, updateLicenseUI, showPinLock, closePinLock, submitPinLock, enableEncryptionFromSettings, changePinFromSettings, disableEncryption, updateCryptoUI };
     })();
 
     (async () => {
