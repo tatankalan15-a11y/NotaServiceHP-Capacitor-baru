@@ -230,3 +230,46 @@ npm run android:add   # pertama kali
 npm run apk           # debug
 npm run apk:release   # release (butuh android/ sudah ada + keystore)
 ```
+
+## Install di iPhone
+
+Ada **dua cara** — tanpa server.
+
+### Cara A — PWA (paling praktis, tanpa Mac)
+
+App web yang bisa ditambahkan ke Home Screen iPhone (mirip app).
+
+1. Hosting folder `www/` (setelah `npm run build:web`) ke HTTPS, contoh:
+   - GitHub Pages
+   - Netlify / Vercel (drag folder `www`)
+   - Atau buka lewat domain toko Anda
+2. Di iPhone: buka **Safari** → alamat web app
+3. Tap **Bagikan** → **Tambah ke Layar Utama**
+4. Buka dari ikon di home screen (fullscreen, offline cache aktif)
+
+**Yang jalan di iPhone (PWA):** nota, PDF, WA link, pembukuan, trial/aktivasi, enkripsi.  
+**Yang terbatas:** cetak Bluetooth thermal sering **tidak** didukung Safari iOS (batas Apple). Pakai PDF / AirPrint / share ke printer lain.
+
+### Cara B — App native iOS (IPA)
+
+Butuh:
+- Mac + Xcode
+- Akun [Apple Developer](https://developer.apple.com) (berbayar untuk distribusi non-TestFlight jangka panjang)
+
+```sh
+npm install
+npm run ios:add
+npm run ios:open
+```
+
+Di Xcode: pilih tim signing → Run ke iPhone, atau Archive untuk TestFlight.
+
+> Plugin printer Bluetooth native saat ini dioptimasi untuk **Android**. Di iOS native, cetak thermal perlu plugin/Swift terpisah.
+
+### Ringkas
+
+| Tujuan | Rekomendasi |
+|--------|-------------|
+| Cepat dipakai di iPhone | **PWA** (Cara A) |
+| App Store / TestFlight | **Capacitor iOS** (Cara B + Mac) |
+| Printer thermal BT | Lebih andal di **Android** |

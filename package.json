@@ -9,6 +9,9 @@
     "android:add": "npm run build:web && npx cap add android && node scripts/patch-android.js && npx cap sync android",
     "android:sync": "npm run build:web && npx cap sync android",
     "android:open": "npx cap open android",
+    "ios:add": "npm run build:web && npx cap add ios && npx cap sync ios",
+    "ios:sync": "npm run build:web && npx cap sync ios",
+    "ios:open": "npx cap open ios",
     "apk": "cd android && ./gradlew assembleDebug",
     "apk:release": "cd android && ./gradlew assembleRelease"
   },

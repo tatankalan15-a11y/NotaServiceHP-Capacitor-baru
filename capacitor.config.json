@@ -2,5 +2,16 @@
   "appId": "com.notaservice.hp",
   "appName": "Nota Service HP",
   "webDir": "www",
-  "android": { "allowMixedContent": false }
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "preferredContentMode": "mobile",
+    "scheme": "Nota Service HP"
+  },
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  }
 }
