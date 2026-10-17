@@ -59,6 +59,43 @@ if (fs.existsSync(gradleFile)) {
   let g = fs.readFileSync(gradleFile, 'utf8');
   const code = Math.floor(Date.now() / 60000); // menit sejak 1970, selalu bertambah
   g = g.replace(/versionCode\s+\d+/, 'versionCode ' + code).replace(/versionName\s+\"[^\"]*\"/, 'versionName "1.0.' + code + '"');
+
+  // Signing release: pakai keystore/release.keystore bila ada (untuk APK release / distribusi)
+  const releaseKs = path.join(__dirname, '..', 'keystore', 'release.keystore');
+  if (fs.existsSync(releaseKs) && !g.includes('signingConfigs')) {
+    // Salin keystore ke android/app agar path relatif stabil di CI
+    const appKs = path.join(__dirname, '..', 'android', 'app', 'release.keystore');
+    try { fs.copyFileSync(releaseKs, appKs); } catch (_) {}
+
+    const storePass = process.env.RELEASE_STORE_PASSWORD || 'NotaHP2026Release';
+    const keyPass = process.env.RELEASE_KEY_PASSWORD || 'NotaHP2026Release';
+    const keyAlias = process.env.RELEASE_KEY_ALIAS || 'notaservicehp';
+
+    const signingBlock = `
+    signingConfigs {
+        release {
+            storeFile file('release.keystore')
+            storePassword '${storePass}'
+            keyAlias '${keyAlias}'
+            keyPassword '${keyPass}'
+        }
+    }
+`;
+    // Sisipkan sebelum buildTypes
+    if (g.includes('buildTypes')) {
+      g = g.replace(/buildTypes\s*\{/, signingBlock + '\n    buildTypes {');
+      // Pastikan release memakai signingConfig release
+      g = g.replace(
+        /release\s*\{([^}]*)\}/s,
+        (match, body) => {
+          if (body.includes('signingConfig')) return match;
+          return `release {${body}\n            signingConfig signingConfigs.release\n        }`;
+        }
+      );
+    }
+    console.log('Release signingConfig dipasang (keystore release.keystore)');
+  }
+
   fs.writeFileSync(gradleFile, g);
   console.log('versionCode =', code);
 }
