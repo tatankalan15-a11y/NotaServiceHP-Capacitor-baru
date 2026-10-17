@@ -88,6 +88,11 @@
         .nota-lunas.lunas { background: #e8f5e9; color: #2e7d32; border: 2px solid #4caf50; }
         .nota-lunas.belum { background: #fff3e0; color: #e65100; border: 2px solid #ff9800; }
         .nota-footer { margin-top: 25px; padding-top: 15px; border-top: 1px dashed #dee2e6; text-align: center; font-size: 11px; color: #333; }
+        
+        .nota-qris { margin: 16px 0 8px; padding: 12px; text-align: center; border: 1px dashed #25d366; border-radius: 12px; background: #f6fff8; }
+        .nota-qris img { width: 160px; height: 160px; object-fit: contain; border-radius: 8px; background: #fff; }
+        .nota-qris .qris-title { font-weight: 800; font-size: 13px; color: #128c7e; margin-bottom: 8px; }
+        .nota-qris .qris-label { font-size: 11px; color: #555; margin-top: 8px; line-height: 1.35; }
         .syarat-section { margin-top: 20px; padding: 10px; background: #f9f9f9; border-radius: 8px; font-size: 11px; line-height: 1.45; color: #555; text-align: left; border-left: 3px solid var(--primary); }
         .action-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; }
         .btn-action { padding: 12px; border: none; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: white; transition: all 0.3s; text-align: center; }
@@ -333,6 +338,17 @@
         <div><label>Alamat</label><input type="text" id="settingAlamat"></div>
         <div><label>No. Telepon Toko</label><input type="tel" id="settingTelepon"></div>
         <div><label>Logo Toko (Max 500KB)</label><div class="logo-preview" id="logoPreview"><span>Belum ada logo</span></div><input type="file" id="logoInput" accept="image/*" onchange="app.handleLogo(event)"><button onclick="app.removeLogo()" style="margin-top:8px;">🗑️ Hapus Logo</button></div>
+                <div style="margin-top:12px;padding:12px;border-radius:12px;background:rgba(37,211,102,0.08);">
+            <label style="font-weight:700;">QRIS Toko (Max 500KB)</label>
+            <p style="font-size:11px;color:#666;margin:6px 0 8px;line-height:1.4;">Gambar QRIS dari bank/e-wallet. Muncul di nota konsumen setelah total biaya.</p>
+            <div class="logo-preview" id="qrisPreview" style="width:140px;height:140px;"><span>Belum ada QRIS</span></div>
+            <input type="file" id="qrisInput" accept="image/*" onchange="app.handleQris(event)">
+            <input type="text" id="settingQrisLabel" placeholder="Teks di bawah QR (opsional), misal: Scan QRIS BCA a.n. Toko Jaya" style="width:100%;margin-top:8px;box-sizing:border-box;">
+            <button type="button" onclick="app.removeQris()" style="margin-top:8px;">Hapus QRIS</button>
+            <label class="checkbox-group" style="margin-top:8px;display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="qrisShowAlways"> Tampilkan QRIS di semua jenis nota
+            </label>
+        </div>
         <div><label>Ukuran Printer Thermal</label><select id="printerSize"><option value="58">58 mm</option><option value="75">75 mm</option><option value="80">80 mm</option></select></div>
         <div><label class="checkbox-group"><input type="checkbox" id="autoPrintCheckbox"> 🔄 Auto print Bluetooth setelah simpan</label></div>
         <div><label class="checkbox-group"><input type="checkbox" id="maskPwdCheckbox" onchange="localStorage.setItem('mask_pwd', this.checked); if(window.app && document.getElementById('previewCard').classList.contains('active')) app.renderPreview();"> 🔒 Sembunyikan password/pola di nota (privasi)</label></div>
