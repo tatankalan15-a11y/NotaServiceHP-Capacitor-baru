@@ -9,6 +9,16 @@ import {
     encryptObject, decryptObject, setupEncryption, unlockWithPin,
     encryptBackupPayload, decryptBackupPayload, isEncryptedRecord, cryptoAvailable
 } from './crypto.js';
+import {
+    generateSNFromToko as genSNFromToko,
+    generateActivationCode as genActivationCode,
+    isValidActivation as checkActivation,
+    signLicenseBlob,
+    verifyLicenseBlob,
+    LICENSE_SECRET,
+    LICENSE_PREFIX,
+    LICENSE_TRIAL_LIMIT
+} from './license-crypto.js';
 
 // Plugin native kustom (android/.../WhatsAppSharePlugin.java) untuk kirim gambar langsung ke chat nomor tertentu
 const WhatsAppShare = registerPlugin('WhatsAppShare');
@@ -42,34 +52,18 @@ const EscPosPrinter = registerPlugin('EscPosPrinter');
         }
 
         // ============================================
-        // SISTEM TRIAL & AKTIVASI (batas 100 transaksi)
+        // SISTEM TRIAL & AKTIVASI (HMAC-SHA256)
+        // SECRET & algoritma di src/license-crypto.js
         // ============================================
         const LICENSE = {
-            TRIAL_LIMIT: 100,
-            SECRET: 'NotaHP2026MasBrooSecretX7',
-            PREFIX: 'NSHP'
+            TRIAL_LIMIT: LICENSE_TRIAL_LIMIT,
+            SECRET: LICENSE_SECRET,
+            PREFIX: LICENSE_PREFIX
         };
 
-        function simpleHash(str) {
-            let h = 0;
-            for (let i = 0; i < str.length; i++) {
-                h = ((h << 5) - h) + str.charCodeAt(i);
-                h |= 0;
-            }
-            return Math.abs(h).toString(16).toUpperCase().padStart(8, '0');
-        }
-
-        /** SN digenerate dari Nama Toko + Alamat + Telepon. Ganti data toko → SN berubah. */
+        /** SN digenerate dari Nama Toko + Alamat + Telepon (HMAC-SHA256). */
         function generateSNFromToko(nama, alamat, telepon) {
-            const base = [nama || '', alamat || '', telepon || '']
-                .map(s => String(s).trim().toUpperCase().replace(/\s+/g, ' '))
-                .join('|');
-            // Jika data toko masih kosong, pakai fallback agar tetap ada SN
-            const seed = base.replace(/\|/g, '') ? base : 'DEFAULT-TOKO-KOSONG';
-            const h1 = simpleHash(seed + LICENSE.SECRET + 'SN1');
-            const h2 = simpleHash(seed + LICENSE.SECRET + 'SN2' + h1);
-            // Format: NSHP-XXXX-XXXX (mudah dibaca & dikirim)
-            return LICENSE.PREFIX + '-' + h1.substring(0, 4) + h2.substring(0, 4);
+            return genSNFromToko(nama, alamat, telepon);
         }
 
         function generateSN() {
@@ -80,51 +74,66 @@ const EscPosPrinter = registerPlugin('EscPosPrinter');
         }
 
         function generateActivationCode(sn) {
-            const clean = (sn || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
-            const h1 = simpleHash(clean + LICENSE.SECRET + 'A1');
-            const h2 = simpleHash(clean + LICENSE.SECRET + 'B2' + h1);
-            const h3 = simpleHash(clean + LICENSE.SECRET + 'C3' + h2);
-            const h4 = simpleHash(clean + LICENSE.SECRET + 'D4' + h3);
-            return [h1.substring(0, 6), h2.substring(0, 6), h3.substring(0, 6), h4.substring(0, 6)].join('-');
+            return genActivationCode(sn);
         }
 
         function isValidActivation(sn, code) {
-            if (!sn || !code) return false;
-            const expected = generateActivationCode(sn);
-            return code.replace(/\s/g, '').toUpperCase() === expected.replace(/\s/g, '').toUpperCase();
+            return checkActivation(sn, code);
         }
 
+        /**
+         * Baca status lisensi. Signature HMAC diverifikasi.
+         * Edit manual localStorage (activated:true) → ditolak.
+         * trialUsed bersifat monotoik (tidak turun meski history dihapus).
+         */
         function getLicenseStatus() {
+            const empty = { activated: false, sn: null, trialUsed: 0, activatedAt: null, sig: null };
             try {
                 const raw = localStorage.getItem('nshp_license');
-                if (!raw) return { activated: false, sn: null, count: 0 };
-                return JSON.parse(raw);
+                if (!raw) return { ...empty };
+                const st = JSON.parse(raw);
+                if (!verifyLicenseBlob(st)) {
+                    // Signature invalid → anggap trial saja, pertahankan trialUsed jika angka valid
+                    const kept = Math.max(0, parseInt(st.trialUsed, 10) || 0);
+                    return { activated: false, sn: st.sn || null, trialUsed: kept, activatedAt: null, sig: null, tampered: true };
+                }
+                return {
+                    activated: !!st.activated,
+                    sn: st.sn || null,
+                    trialUsed: Math.max(0, parseInt(st.trialUsed, 10) || 0),
+                    activatedAt: st.activatedAt || null,
+                    sig: st.sig
+                };
             } catch (_) {
-                return { activated: false, sn: null, count: 0 };
+                return { ...empty };
             }
         }
 
         function saveLicenseStatus(status) {
-            try { localStorage.setItem('nshp_license', JSON.stringify(status)); } catch (_) {}
+            try {
+                const blob = {
+                    sn: status.sn || null,
+                    activated: !!status.activated,
+                    trialUsed: Math.max(0, parseInt(status.trialUsed, 10) || 0),
+                    activatedAt: status.activatedAt || null
+                };
+                blob.sig = signLicenseBlob(blob);
+                localStorage.setItem('nshp_license', JSON.stringify(blob));
+            } catch (_) {}
         }
 
         /**
-         * Sinkronkan SN dengan data toko saat ini.
-         * Jika SN berubah (nama/alamat/telepon diganti) dan sebelumnya sudah aktivasi,
-         * status aktivasi di-reset → harus aktivasi ulang dengan SN baru.
+         * Sinkronkan SN dengan data toko. Ganti data toko → aktivasi hangus.
+         * trialUsed tidak di-reset.
          */
         function ensureSN() {
             const newSn = generateSN();
             let st = getLicenseStatus();
             if (st.sn !== newSn) {
-                const wasActivated = !!st.activated;
+                const wasActivated = !!st.activated && !st.tampered;
                 st.sn = newSn;
-                // Data toko berubah → aktivasi lama tidak berlaku lagi
-                if (wasActivated) {
-                    st.activated = false;
-                    st.activatedAt = null;
-                    st.prevSn = st.sn; // jejak singkat (opsional)
-                }
+                st.activated = false;
+                st.activatedAt = null;
                 saveLicenseStatus(st);
                 if (wasActivated) {
                     try { showToast('⚠️ Data toko berubah → SN baru. Silakan aktivasi ulang.'); } catch (_) {}
@@ -137,21 +146,47 @@ const EscPosPrinter = registerPlugin('EscPosPrinter');
         }
 
         function isActivated() {
-            return !!getLicenseStatus().activated;
+            const st = getLicenseStatus();
+            return !!st.activated && !st.tampered && verifyLicenseBlob({ ...st, sig: st.sig });
+        }
+
+        /** Jumlah trial yang sudah terpakai (monotoik, tidak turun jika history dihapus). */
+        function getTrialUsed() {
+            const st = getLicenseStatus();
+            const fromHistory = (historyData && historyData.length) || 0;
+            return Math.max(st.trialUsed | 0, fromHistory);
+        }
+
+        /**
+         * Naikkan counter trial bila history bertambah.
+         * Dipanggil setelah simpan nota / load data.
+         */
+        function syncTrialCounter() {
+            const st = getLicenseStatus();
+            const used = getTrialUsed();
+            if (used > (st.trialUsed | 0)) {
+                st.trialUsed = used;
+                // Pertahankan activated hanya jika signature masih valid
+                if (st.tampered) {
+                    st.activated = false;
+                    st.activatedAt = null;
+                }
+                saveLicenseStatus(st);
+            }
         }
 
         function getTransactionCount() {
-            return (historyData && historyData.length) || 0;
+            return getTrialUsed();
         }
 
         function canCreateNota() {
             if (isActivated()) return true;
-            return getTransactionCount() < LICENSE.TRIAL_LIMIT;
+            return getTrialUsed() < LICENSE.TRIAL_LIMIT;
         }
 
         function getRemainingTrial() {
             if (isActivated()) return Infinity;
-            return Math.max(0, LICENSE.TRIAL_LIMIT - getTransactionCount());
+            return Math.max(0, LICENSE.TRIAL_LIMIT - getTrialUsed());
         }
 
         function updateLicenseUI() {
@@ -198,17 +233,24 @@ const EscPosPrinter = registerPlugin('EscPosPrinter');
         }
 
         function doActivate() {
-            const sn = (document.getElementById('actSN') || {}).value || '';
-            const code = (document.getElementById('actCode') || {}).value || '';
-            if (!isValidActivation(sn.trim(), code.trim())) {
+            const sn = ((document.getElementById('actSN') || {}).value || '').trim();
+            const code = ((document.getElementById('actCode') || {}).value || '').trim();
+            if (!isValidActivation(sn, code)) {
                 showToast('❌ Kode aktivasi salah');
                 return;
             }
+            // SN di form harus cocok dengan SN toko saat ini
+            const currentSn = generateSN();
+            if (sn.replace(/[^A-Z0-9]/gi, '').toUpperCase() !== currentSn.replace(/[^A-Z0-9]/gi, '').toUpperCase()) {
+                showToast('❌ SN tidak cocok dengan data toko saat ini');
+                return;
+            }
             const st = getLicenseStatus();
+            st.sn = currentSn;
             st.activated = true;
             st.activatedAt = new Date().toISOString();
-            st.sn = sn.trim();
-            saveLicenseStatus(st);
+            st.trialUsed = getTrialUsed();
+            saveLicenseStatus(st); // menulis signature HMAC
             closeActivation();
             showToast('✅ Berhasil diaktivasi! Full version aktif.');
             updateLicenseUI();
@@ -526,8 +568,8 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
             const raw = await new Promise((res, rej) => { const tx = db.transaction(['nota'], 'readonly'), store = tx.objectStore('nota'), req = store.getAll(); req.onsuccess = () => res(req.result); req.onerror = rej; });
             return decryptList(raw);
         }
-        async function saveToHistory(nota) { try { await saveToDB(nota); const i = historyData.findIndex(h => h.id === nota.id); if (i !== -1) historyData[i] = nota; else historyData.unshift(nota); try { await auditLog('Simpan/perbarui nota', `${nota.notaId || nota.id} · ${nota.type || 'servis'} · ${nota.nama || ''}`); } catch (_) {} return true; } catch (e) { console.error('saveToHistory gagal', e); const why = (e && (e.message || (e.target && e.target.error && e.target.error.message))) || 'database tidak bisa diakses'; showToast('❌ Nota GAGAL disimpan: ' + why); return false; } }
-        async function loadHistory() { try { historyData = (await getAllFromDB()).map(sanitizeNota).filter(Boolean).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)); } catch (e) { historyData = []; } try { expenseData = (await decryptList(await getAllExpensesRaw())).map(sanitizeExpense).filter(Boolean); } catch (e) { expenseData = []; } try { paymentData = await decryptList(await getAllStoreRaw('pembayaran')); inventoryData = await decryptList(await getAllStoreRaw('inventori')); auditData = await decryptList(await getAllStoreRaw('audit')); stockMoves = await decryptList(await getAllStoreRaw('stokmutasi')); } catch (e) { paymentData=[]; inventoryData=[]; auditData=[]; stockMoves=[]; } }
+        async function saveToHistory(nota) { try { await saveToDB(nota); const i = historyData.findIndex(h => h.id === nota.id); if (i !== -1) historyData[i] = nota; else historyData.unshift(nota); try { syncTrialCounter(); } catch (_) {} try { await auditLog('Simpan/perbarui nota', `${nota.notaId || nota.id} · ${nota.type || 'servis'} · ${nota.nama || ''}`); } catch (_) {} return true; } catch (e) { console.error('saveToHistory gagal', e); const why = (e && (e.message || (e.target && e.target.error && e.target.error.message))) || 'database tidak bisa diakses'; showToast('❌ Nota GAGAL disimpan: ' + why); return false; } }
+        async function loadHistory() { try { historyData = (await getAllFromDB()).map(sanitizeNota).filter(Boolean).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)); } catch (e) { historyData = []; } try { expenseData = (await decryptList(await getAllExpensesRaw())).map(sanitizeExpense).filter(Boolean); } catch (e) { expenseData = []; } try { paymentData = await decryptList(await getAllStoreRaw('pembayaran')); inventoryData = await decryptList(await getAllStoreRaw('inventori')); auditData = await decryptList(await getAllStoreRaw('audit')); stockMoves = await decryptList(await getAllStoreRaw('stokmutasi')); } catch (e) { paymentData=[]; inventoryData=[]; auditData=[]; stockMoves=[]; } try { syncTrialCounter(); } catch (_) {} }
 
         function validateForm() {
             let v = true;
