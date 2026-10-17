@@ -60,10 +60,9 @@ if (fs.existsSync(gradleFile)) {
   const code = Math.floor(Date.now() / 60000); // menit sejak 1970, selalu bertambah
   g = g.replace(/versionCode\s+\d+/, 'versionCode ' + code).replace(/versionName\s+\"[^\"]*\"/, 'versionName "1.0.' + code + '"');
 
-  // Signing release: pakai keystore/release.keystore bila ada (untuk APK release / distribusi)
+  // Signing release — hanya tembak buildTypes.release (bukan signingConfigs.release)
   const releaseKs = path.join(__dirname, '..', 'keystore', 'release.keystore');
-  if (fs.existsSync(releaseKs) && !g.includes('signingConfigs')) {
-    // Salin keystore ke android/app agar path relatif stabil di CI
+  if (fs.existsSync(releaseKs)) {
     const appKs = path.join(__dirname, '..', 'android', 'app', 'release.keystore');
     try { fs.copyFileSync(releaseKs, appKs); } catch (_) {}
 
@@ -71,29 +70,36 @@ if (fs.existsSync(gradleFile)) {
     const keyPass = process.env.RELEASE_KEY_PASSWORD || 'NotaHP2026Release';
     const keyAlias = process.env.RELEASE_KEY_ALIAS || 'notaservicehp';
 
-    const signingBlock = `
-    signingConfigs {
-        release {
-            storeFile file('release.keystore')
-            storePassword '${storePass}'
-            keyAlias '${keyAlias}'
-            keyPassword '${keyPass}'
-        }
+    if (!/\bsigningConfigs\s*\{/.test(g)) {
+      const signingBlock =
+        `\n    signingConfigs {\n` +
+        `        release {\n` +
+        `            storeFile file('release.keystore')\n` +
+        `            storePassword '${storePass}'\n` +
+        `            keyAlias '${keyAlias}'\n` +
+        `            keyPassword '${keyPass}'\n` +
+        `        }\n` +
+        `    }\n`;
+      if (/\bbuildTypes\s*\{/.test(g)) {
+        g = g.replace(/\bbuildTypes\s*\{/, signingBlock + '    buildTypes {');
+      }
     }
-`;
-    // Sisipkan sebelum buildTypes
-    if (g.includes('buildTypes')) {
-      g = g.replace(/buildTypes\s*\{/, signingBlock + '\n    buildTypes {');
-      // Pastikan release memakai signingConfig release
-      g = g.replace(
-        /release\s*\{([^}]*)\}/s,
-        (match, body) => {
-          if (body.includes('signingConfig')) return match;
-          return `release {${body}\n            signingConfig signingConfigs.release\n        }`;
+
+    // Sisipkan "signingConfig signingConfigs.release" hanya di dalam buildTypes → release
+    const btIdx = g.search(/\bbuildTypes\s*\{/);
+    if (btIdx >= 0) {
+      const fromBt = g.slice(btIdx);
+      const relInBt = fromBt.search(/\brelease\s*\{/);
+      if (relInBt >= 0) {
+        const absRel = btIdx + relInBt;
+        const brace = g.indexOf('{', absRel);
+        const window = g.slice(brace, brace + 300);
+        if (!window.includes('signingConfig')) {
+          g = g.slice(0, brace + 1) + '\n            signingConfig signingConfigs.release' + g.slice(brace + 1);
+          console.log('Release signingConfig dipasang di buildTypes.release');
         }
-      );
+      }
     }
-    console.log('Release signingConfig dipasang (keystore release.keystore)');
   }
 
   fs.writeFileSync(gradleFile, g);
