@@ -1,6 +1,16 @@
 name: Build APK
 on:
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Jenis build'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - debug
+          - release
   push:
     branches: [main, master]
 permissions:
@@ -18,18 +28,54 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - name: Pakai kunci tanda tangan tetap (agar APK bisa di-update tanpa uninstall)
+
+      - name: Pakai kunci tanda tangan tetap
         run: |
           mkdir -p ~/.android
-          cp keystore/debug.keystore ~/.android/debug.keystore
+          if [ -f keystore/debug.keystore ]; then
+            cp keystore/debug.keystore ~/.android/debug.keystore
+          fi
+          if [ ! -f keystore/release.keystore ]; then
+            echo "WARNING: keystore/release.keystore tidak ada"
+          fi
+
       - run: npm install --legacy-peer-deps
       - run: npm run build:web
       - run: npx cap add android
-      - run: node scripts/patch-android.js
+      - name: Patch Android (manifest, plugin, version, signing)
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          # Default password keystore di repo (bisa diganti lewat GitHub Secrets)
+          export RELEASE_STORE_PASSWORD="${RELEASE_STORE_PASSWORD:-NotaHP2026Release}"
+          export RELEASE_KEY_PASSWORD="${RELEASE_KEY_PASSWORD:-NotaHP2026Release}"
+          export RELEASE_KEY_ALIAS="${RELEASE_KEY_ALIAS:-notaservicehp}"
+          node scripts/patch-android.js
       - run: npx cap sync android
-      - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
-      - uses: actions/upload-artifact@v4
+      - run: chmod +x android/gradlew
+
+      - name: Build Debug APK
+        if: github.event_name == 'push' || github.event.inputs.build_type == 'debug' || github.event.inputs.build_type == 'both'
+        run: cd android && ./gradlew assembleDebug
+
+      - name: Build Release APK
+        if: github.event_name == 'push' || github.event.inputs.build_type == 'release' || github.event.inputs.build_type == 'both'
+        run: cd android && ./gradlew assembleRelease
+
+      - name: Upload Debug APK
+        if: github.event_name == 'push' || github.event.inputs.build_type == 'debug' || github.event.inputs.build_type == 'both'
+        uses: actions/upload-artifact@v4
         with:
           name: NotaServiceHP-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          if-no-files-found: warn
+
+      - name: Upload Release APK
+        if: github.event_name == 'push' || github.event.inputs.build_type == 'release' || github.event.inputs.build_type == 'both'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NotaServiceHP-release-apk
+          path: android/app/build/outputs/apk/release/
+          if-no-files-found: warn
