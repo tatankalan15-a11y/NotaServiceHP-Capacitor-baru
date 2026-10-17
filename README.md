@@ -199,3 +199,34 @@ Nota dicetak langsung ke printer thermal **tanpa aplikasi perantara** (tidak per
 - Modul: `src/crypto.js`
 
 > Jangan lupa PIN. Tanpa PIN, data terenkripsi tidak bisa dibuka.
+
+## Build Debug vs Release
+
+| Jenis | Artifact | Kegunaan |
+|-------|----------|----------|
+| **Debug** | `NotaServiceHP-debug-apk` | Uji coba, development |
+| **Release** | `NotaServiceHP-release-apk` | Bagikan ke pelanggan / install harian |
+
+### Lewat GitHub Actions
+1. Tab **Actions** → **Build APK** → **Run workflow**
+2. Pilih **build_type**: `both` / `debug` / `release`
+3. Unduh artifact yang sesuai
+
+### Keystore release
+- File: `keystore/release.keystore`
+- Alias default: `notaservicehp`
+- Password default: `NotaHP2026Release` (sama store & key)
+
+Untuk keamanan lebih baik, set GitHub Secrets:
+- `RELEASE_STORE_PASSWORD`
+- `RELEASE_KEY_PASSWORD`
+- `RELEASE_KEY_ALIAS`
+
+> **Penting:** simpan keystore release. Kalau hilang, update APK ke HP pelanggan yang sudah install bisa gagal (harus uninstall dulu).
+
+### Lokal
+```sh
+npm run android:add   # pertama kali
+npm run apk           # debug
+npm run apk:release   # release (butuh android/ sudah ada + keystore)
+```
