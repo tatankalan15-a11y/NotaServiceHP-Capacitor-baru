@@ -2,10 +2,16 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
     <meta name="theme-color" content="#667eea" id="themeColorMeta">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Nota HP">
+    <meta name="application-name" content="Nota Service HP">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon.png">
     <title>Nota Service HP - Profesional</title>
     <script src="libs/html2canvas.min.js"></script>
     <script src="libs/jspdf.umd.min.js"></script>
@@ -413,5 +419,13 @@
 </div>
 
 <script src="app.bundle.js"></script>
+<script>
+// PWA / iPhone: cache offline + install ke Home Screen
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js').catch(function () {});
+  });
+}
+</script>
 </body>
 </html>
