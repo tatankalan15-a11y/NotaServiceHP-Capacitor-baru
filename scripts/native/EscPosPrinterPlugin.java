@@ -7,10 +7,14 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
 import android.util.Base64;
 
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.JSArray;
@@ -27,6 +31,8 @@ import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -45,7 +51,13 @@ import java.util.concurrent.Executors;
 @CapacitorPlugin(
     name = "EscPosPrinter",
     permissions = {
-        @Permission(alias = "bluetooth", strings = { Manifest.permission.BLUETOOTH_CONNECT })
+        @Permission(
+            alias = "bluetooth",
+            strings = {
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_SCAN
+            }
+        )
     }
 )
 public class EscPosPrinterPlugin extends Plugin {
@@ -71,10 +83,103 @@ public class EscPosPrinterPlugin extends Plugin {
 
     // ------------------------------------------------------------------ izin
 
+    /** Android 12+ (API 31) butuh BLUETOOTH_CONNECT (+ SCAN). Di bawah itu izin instal cukup. */
+    private boolean needsRuntimeBluetoothPermission() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S;
+    }
+
     private boolean hasBluetoothPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true; // Android < 12: izin normal, sudah diberikan saat instal
-        return ContextCompat.checkSelfPermission(getContext(), Manifest.permission.BLUETOOTH_CONNECT)
+        if (!needsRuntimeBluetoothPermission()) return true;
+        Context ctx = getContext();
+        boolean connect = ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT)
             == PackageManager.PERMISSION_GRANTED;
+        boolean scan = ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_SCAN)
+            == PackageManager.PERMISSION_GRANTED;
+        return connect && scan;
+    }
+
+    private boolean shouldShowRationale() {
+        if (!needsRuntimeBluetoothPermission()) return false;
+        try {
+            return ActivityCompat.shouldShowRequestPermissionRationale(
+                    getActivity(), Manifest.permission.BLUETOOTH_CONNECT)
+                || ActivityCompat.shouldShowRequestPermissionRationale(
+                    getActivity(), Manifest.permission.BLUETOOTH_SCAN);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Status izin untuk JS: { bluetooth: "granted"|"denied"|"prompt" } */
+    @PluginMethod
+    public void checkPermissions(PluginCall call) {
+        JSObject ret = new JSObject();
+        if (!needsRuntimeBluetoothPermission()) {
+            ret.put("bluetooth", "granted");
+            call.resolve(ret);
+            return;
+        }
+        if (hasBluetoothPermission()) {
+            ret.put("bluetooth", "granted");
+        } else if (shouldShowRationale()) {
+            // Sudah pernah ditolak, tapi dialog masih bisa muncul lagi
+            ret.put("bluetooth", "prompt");
+        } else {
+            // Belum pernah diminta ATAU ditolak permanen ("jangan tanya lagi")
+            // Capacitor memakai "prompt" untuk belum diminta; di sini kita bedakan lewat denied.
+            // Cek aman: jika belum pernah request, shouldShowRationale=false juga.
+            // Untuk UX, JS akan memanggil requestPermissions dulu.
+            ret.put("bluetooth", "denied");
+        }
+        call.resolve(ret);
+    }
+
+    /**
+     * Minta izin Bluetooth runtime (Android 12+).
+     * JS harus await ini sebelum listPrinters/print.
+     */
+    @PluginMethod
+    public void requestPermissions(PluginCall call) {
+        if (hasBluetoothPermission()) {
+            JSObject ret = new JSObject();
+            ret.put("bluetooth", "granted");
+            call.resolve(ret);
+            return;
+        }
+        if (!needsRuntimeBluetoothPermission()) {
+            JSObject ret = new JSObject();
+            ret.put("bluetooth", "granted");
+            call.resolve(ret);
+            return;
+        }
+        requestPermissionForAlias("bluetooth", call, "permissionsResult");
+    }
+
+    @PermissionCallback
+    private void permissionsResult(PluginCall call) {
+        JSObject ret = new JSObject();
+        if (hasBluetoothPermission()) {
+            ret.put("bluetooth", "granted");
+            call.resolve(ret);
+        } else {
+            ret.put("bluetooth", "denied");
+            // Jangan reject di sini agar JS bisa handle dan buka Settings
+            call.resolve(ret);
+        }
+    }
+
+    /** Buka halaman detail aplikasi di Pengaturan (untuk aktifkan izin manual). */
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Tidak bisa membuka Pengaturan: " + e.getMessage());
+        }
     }
 
     /** Lanjut bila izin sudah ada; kalau belum, minta dulu lalu panggil permissionCallback. */
@@ -87,7 +192,10 @@ public class EscPosPrinterPlugin extends Plugin {
     @PermissionCallback
     private void permissionCallback(PluginCall call) {
         if (!hasBluetoothPermission()) {
-            call.reject("Izin Bluetooth ditolak. Aktifkan izin 'Perangkat sekitar' untuk aplikasi ini di Pengaturan HP.", "PERMISSION_DENIED");
+            call.reject(
+                "Izin Bluetooth ditolak. Buka Pengaturan HP → Aplikasi → Nota Service HP → Izin → aktifkan 'Perangkat sekitar' / Nearby devices, lalu coba lagi.",
+                "PERMISSION_DENIED"
+            );
             return;
         }
         String method = call.getMethodName();
@@ -132,7 +240,10 @@ public class EscPosPrinterPlugin extends Plugin {
             ret.put("printers", list);
             call.resolve(ret);
         } catch (SecurityException e) {
-            call.reject("Izin Bluetooth belum diberikan", "PERMISSION_DENIED");
+            call.reject(
+                "Izin Bluetooth belum diberikan. Aktifkan 'Perangkat sekitar' di Pengaturan aplikasi.",
+                "PERMISSION_DENIED"
+            );
         } catch (Exception e) {
             call.reject("Gagal membaca daftar printer: " + e.getMessage());
         }
@@ -187,7 +298,10 @@ public class EscPosPrinterPlugin extends Plugin {
                 ret.put("bytes", bytes.length);
                 call.resolve(ret);
             } catch (SecurityException e) {
-                call.reject("Izin Bluetooth belum diberikan", "PERMISSION_DENIED");
+                call.reject(
+                    "Izin Bluetooth belum diberikan. Aktifkan 'Perangkat sekitar' di Pengaturan aplikasi.",
+                    "PERMISSION_DENIED"
+                );
             } catch (Exception e) {
                 call.reject(e.getMessage() != null ? e.getMessage() : "Gagal mencetak");
             }
