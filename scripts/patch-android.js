@@ -4,11 +4,15 @@ const path = require('path');
 const f = path.join(__dirname, '..', 'android/app/src/main/AndroidManifest.xml');
 if (!fs.existsSync(f)) throw new Error('AndroidManifest.xml tidak ditemukan. Jalankan npx cap add android terlebih dahulu.');
 let x = fs.readFileSync(f, 'utf8');
+// Namespace tools dibutuhkan untuk usesPermissionFlags pada BLUETOOTH_SCAN
+if (!x.includes('xmlns:tools=')) {
+  x = x.replace('<manifest ', '<manifest xmlns:tools="http://schemas.android.com/tools" ');
+}
 const permissions = [
   '<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />',
   '<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />',
   '<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />',
-  '<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />',
+  '<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />',
   '<uses-permission android:name="android.permission.CAMERA" />',
   '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />',
   '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />',
@@ -19,6 +23,13 @@ const missing = permissions.filter(p => !x.includes(p.match(/android:name="([^"]
 if (missing.length) {
   if (!x.includes('<application')) throw new Error('Tag <application> tidak ditemukan di AndroidManifest.xml');
   x = x.replace('<application', missing.join('\n    ') + '\n    <application');
+}
+// Perbaiki BLUETOOTH_SCAN lama yang belum punya neverForLocation
+if (x.includes('android.permission.BLUETOOTH_SCAN') && !x.includes('neverForLocation')) {
+  x = x.replace(
+    /<uses-permission[^>]*android\.permission\.BLUETOOTH_SCAN[^>]*\/>/,
+    '<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />'
+  );
 }
 if (!x.includes('android.hardware.camera')) x = x.replace('<application', '<uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application');
 // Photo picker (Google Play services) agar galeri langsung siap di Android < 13, sesuai dokumentasi @capacitor/camera.
