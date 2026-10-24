@@ -968,10 +968,34 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
                 L.push('[C]Terima Kasih', '[C]Simpan nota ini sebagai bukti');
                 return L.join('\n');
             }
+            // Minta izin Bluetooth (Perangkat sekitar) sebelum list/cetak. Android 12+.
+            async ensureBluetoothPermission() {
+                const EP = getPlugin('EscPosPrinter');
+                if (!EP || typeof EP.requestPermissions !== 'function') return true;
+                try {
+                    let status = await EP.checkPermissions();
+                    if (status && status.bluetooth === 'granted') return true;
+                    status = await EP.requestPermissions();
+                    if (status && status.bluetooth === 'granted') return true;
+                } catch (e) {
+                    console.warn('requestPermissions Bluetooth:', e);
+                }
+                // Izin ditolak (mungkin "jangan tanya lagi") — tawarkan buka Pengaturan
+                const buka = confirm(
+                    "Izin Bluetooth / Perangkat sekitar belum diizinkan.\n\n" +
+                    "Buka Pengaturan aplikasi sekarang untuk mengaktifkannya?\n\n" +
+                    "Pengaturan → Aplikasi → Nota Service HP → Izin → Perangkat sekitar = Izinkan"
+                );
+                if (buka && typeof EP.openAppSettings === 'function') {
+                    try { await EP.openAppSettings(); } catch (_) {}
+                }
+                throw new Error("Izin Bluetooth ditolak. Aktifkan 'Perangkat sekitar' di Pengaturan aplikasi, lalu coba lagi.");
+            }
             // Tentukan tujuan cetak dari ID tersimpan: IP (LAN/WiFi) atau MAC (Bluetooth).
             async resolveTarget() {
                 const lan = parseLanAddress(lastPrinterId);
                 if (lan) return { type: 'tcp', address: lan.host, port: lan.port };
+                await this.ensureBluetoothPermission();
                 if (lastPrinterId) return { type: 'bluetooth', address: lastPrinterId };
                 // Belum ada printer tersimpan: pakai printer ter-pairing (tanya bila lebih dari satu).
                 const list = await listBluetoothPrinters();
@@ -985,6 +1009,7 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
                 const EP = getPlugin('EscPosPrinter');
                 if (EP) {
                     const target = await this.resolveTarget();
+                    if (target.type === 'bluetooth') await this.ensureBluetoothPermission();
                     await EP.print({ ...target, data: bytesToBase64(bytes) });
                     showToast('✅ Nota terkirim ke printer'); return;
                 }
@@ -1005,13 +1030,20 @@ function escapeHtml(str) { if (str === null || str === undefined) return ''; ret
             if (!currentNota) { showToast('Buat nota dulu'); return; }
             showLoading();
             try { await printer.print({ ...thermalExtra(), toko: tokoSettings.nama||'Service HP', slogan: tokoSettings.slogan || '', telepon: tokoSettings.telepon || '', id: currentNota.notaId, tanggal: currentNota.tanggal+' '+currentNota.jam, nama: unesc(currentNota.nama), nohp: currentNota.nohp || '-', device: unesc(currentNota.device), keluhan: unesc(currentNota.keluhan), biaya: currentNota.totalBiaya, dp: currentNota.dp, sisa: currentNota.sisa, footer: footers[footerKey()]?.enabled ? footers[footerKey()].text : '' }); }
-            catch (e) { showToast('❌ Gagal cetak thermal: ' + e.message + '. Beralih ke PDF.'); generatePDF(); }
+            catch (e) {
+                const msg = (e && e.message) || String(e);
+                showToast('❌ Gagal cetak thermal: ' + msg);
+                if (!/izin|permission|bluetooth|perangkat sekitar/i.test(msg)) {
+                    try { generatePDF(); } catch (_) {}
+                }
+            }
             finally { hideLoading(); }
         }
         function setPrinterId(id) { localStorage.setItem('last_printer_id', id); lastPrinterId = id; const inp = document.getElementById('printerDeviceId'); if (inp) inp.value = id; }
         async function listBluetoothPrinters() {
             const EP = getPlugin('EscPosPrinter');
             if (!EP) throw new Error('Pilih printer hanya tersedia di aplikasi Android');
+            await printer.ensureBluetoothPermission();
             const r = await EP.listPrinters();
             return (r && r.printers) || [];
         }
